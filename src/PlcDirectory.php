@@ -2,6 +2,7 @@
 
 namespace StreetMesh\Protocol;
 
+use DateTimeInterface;
 use JsonException;
 use RuntimeException;
 
@@ -63,6 +64,17 @@ final class PlcDirectory
 
         return $log[0]['operation']
             ?? throw new RuntimeException("[{$did}] has an empty log, which should not be possible.");
+    }
+
+    /**
+     * The key an identity was using at a given moment, fetched and resolved.
+     *
+     * The convenience over Plc::keyAt for callers that have a DID rather than
+     * a log — the derivation itself stays pure and offline over there.
+     */
+    public function keyAt(string $did, DateTimeInterface $at, string $fragment = 'atproto'): string
+    {
+        return Plc::keyAt($this->auditLog($did), $at, $fragment);
     }
 
     /**

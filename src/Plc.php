@@ -2,6 +2,9 @@
 
 namespace StreetMesh\Protocol;
 
+use DateTimeImmutable;
+use DateTimeInterface;
+use InvalidArgumentException;
 
 /**
  * `did:plc` — an identifier that is not an address.
@@ -32,6 +35,104 @@ final class Plc
         $hash = hash('sha256', DagCbor::encode($operation), binary: true);
 
         return 'did:plc:'.substr(strtolower(self::base32($hash)), 0, 24);
+    }
+
+    /**
+     * Every key an identity has used for one purpose, and when each was current.
+     *
+     * A DID document publishes the key that is current now, which is the wrong
+     * question to ask of a signature made earlier. Keys are rotated — after a
+     * compromise, on moving to another server, or as ordinary hygiene — and a
+     * signature checked against today's key fails for a document that was
+     * perfectly good when it was made.
+     *
+     * This is not hypothetical: real identities have rotated, and nothing they
+     * signed beforehand verifies against the key their document publishes now.
+     * A system whose whole claim is that records outlive their issuer has to be
+     * able to ask what was true then rather than what is true today.
+     *
+     * The audit log makes that answerable, which is a property `did:web` does
+     * not have at all — it publishes a document and no history whatsoever.
+     *
+     * @param  array<int, array<string, mixed>>  $auditLog  oldest first
+     * @param  string  $fragment  the verification method, e.g. `atproto`
+     * @return array<int, array{key: string, from: string, until: string|null}>
+     */
+    public static function keyHistory(array $auditLog, string $fragment = 'atproto'): array
+    {
+        $rotations = [];
+
+        foreach ($auditLog as $entry) {
+            /*
+             * Nullified operations were undone by a recovery using a
+             * higher-priority rotation key. They stay in the log so the recovery
+             * is auditable, and must never be read as history.
+             */
+            if ($entry['nullified'] ?? false) {
+                continue;
+            }
+
+            $key = $entry['operation']['verificationMethods'][$fragment] ?? null;
+
+            if (! is_string($key)) {
+                continue;
+            }
+
+            $key = str_starts_with($key, 'did:key:') ? substr($key, strlen('did:key:')) : $key;
+
+            // An operation that leaves the key alone is not a rotation, and
+            // recording one would invent a boundary that never existed.
+            if ($rotations !== [] && end($rotations)['key'] === $key) {
+                continue;
+            }
+
+            $rotations[] = ['key' => $key, 'at' => (string) ($entry['createdAt'] ?? '')];
+        }
+
+        // A key is current until the next one replaces it, and the last is
+        // current still — which is the only thing a DID document can tell you.
+        $history = [];
+
+        foreach ($rotations as $index => $rotation) {
+            $history[] = [
+                'key' => $rotation['key'],
+                'from' => $rotation['at'],
+                'until' => $rotations[$index + 1]['at'] ?? null,
+            ];
+        }
+
+        return $history;
+    }
+
+    /**
+     * The key that was current at a given moment.
+     *
+     * Which moment to ask about is the caller's decision and deserves thought.
+     * A timestamp inside a signed document is asserted by whoever signed it, so
+     * it says when they *claim* to have signed — enough against ordinary
+     * rotation, worth nothing against somebody holding a retired key. An anchor
+     * asserted by the receiving party when the document arrived is far stronger,
+     * which is a reason to record receipt rather than to trust issuance.
+     *
+     * @param  array<int, array<string, mixed>>  $auditLog  oldest first
+     */
+    public static function keyAt(
+        array $auditLog,
+        DateTimeInterface $at,
+        string $fragment = 'atproto',
+    ): string {
+        foreach (self::keyHistory($auditLog, $fragment) as $period) {
+            $from = new DateTimeImmutable($period['from']);
+            $until = $period['until'] === null ? null : new DateTimeImmutable($period['until']);
+
+            if ($at >= $from && ($until === null || $at < $until)) {
+                return $period['key'];
+            }
+        }
+
+        throw new InvalidArgumentException(
+            'That identity published no '.$fragment.' key at '.$at->format(DATE_ATOM).'.'
+        );
     }
 
     /**

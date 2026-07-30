@@ -2,6 +2,8 @@
 
 namespace StreetMesh\Protocol\Tests;
 
+use DateTimeImmutable;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use StreetMesh\Protocol\DagCbor;
@@ -136,6 +138,47 @@ class ConformanceTest extends TestCase
 
             // The reason this vector exists: a blank field must survive intact.
             $this->assertSame('', Jws::verify($vector['compact'], $key->publicKey())['detail']['pgn']);
+        }
+    }
+
+    /**
+     * Which key was current when, rather than which is current now.
+     */
+    public function test_key_history_matches_every_vector(): void
+    {
+        $vectors = self::suite('identity/key-history.json')['vectors'];
+
+        $this->assertNotEmpty($vectors);
+
+        foreach ($vectors as $vector) {
+            $this->assertSame(
+                $vector['history'],
+                Plc::keyHistory($vector['auditLog'], $vector['fragment']),
+                "key history for [{$vector['name']}]",
+            );
+
+            foreach ($vector['queries'] as $query) {
+                $at = new DateTimeImmutable($query['at']);
+
+                /*
+                 * Caught rather than expected, so that one refusal does not end
+                 * the loop and quietly skip every query listed after it.
+                 */
+                try {
+                    $answer = Plc::keyAt($vector['auditLog'], $at, $vector['fragment']);
+                } catch (InvalidArgumentException) {
+                    $answer = null;
+                }
+
+                // A refusal is the correct answer outside the identity's
+                // lifetime: returning the earliest key would validate anything
+                // backdated to before it existed.
+                $this->assertSame(
+                    $query['key'],
+                    $answer,
+                    "key at [{$query['name']}]",
+                );
+            }
         }
     }
 
