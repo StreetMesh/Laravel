@@ -6,6 +6,7 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use StreetMesh\Protocol\Cid;
 use StreetMesh\Protocol\DagCbor;
 use StreetMesh\Protocol\Ed25519;
 use StreetMesh\Protocol\Jws;
@@ -234,6 +235,33 @@ class ConformanceTest extends TestCase
 
         $this->assertSame($keys, $sorted, 'keys did not increase monotonically');
         $this->assertCount(5000, array_unique($keys), 'keys collided');
+    }
+
+    /**
+     * Content addressing, against CIDs a live network already assigned.
+     */
+    public function test_content_addressing_matches_every_vector(): void
+    {
+        $vectors = self::suite('encoding/cid.json')['vectors'];
+
+        $this->assertNotEmpty($vectors);
+
+        foreach ($vectors as $vector) {
+            $this->assertSame(
+                $vector['cid'],
+                (string) Cid::forRecord($vector['value']),
+                "CID for [{$vector['name']}]",
+            );
+
+            $this->assertTrue(Cid::parse($vector['cid'])->matches($vector['value']));
+
+            // The property the whole thing rests on: altered content, different
+            // name. Otherwise a reference could not mean "as it was".
+            $altered = $vector['value'];
+            $altered['streetmesh_was_here'] = true;
+
+            $this->assertFalse(Cid::parse($vector['cid'])->matches($altered));
+        }
     }
 
     public function test_p256_signatures_verify_and_reject(): void
