@@ -12,6 +12,7 @@ use StreetMesh\Protocol\Jws;
 use StreetMesh\Protocol\Multikey;
 use StreetMesh\Protocol\P256;
 use StreetMesh\Protocol\Plc;
+use StreetMesh\Protocol\Tid;
 
 /**
  * The vectors are the test suite.
@@ -180,6 +181,59 @@ class ConformanceTest extends TestCase
                 );
             }
         }
+    }
+
+    /**
+     * Record keys, whose whole purpose is that sorting them sorts time.
+     */
+    public function test_record_keys_match_every_vector(): void
+    {
+        $suite = self::suite('encoding/tid.json');
+
+        $this->assertNotEmpty($suite['vectors']);
+
+        foreach ($suite['vectors'] as $vector) {
+            $tid = Tid::parse($vector['tid']);
+            $at = $tid->at();
+
+            $this->assertSame(
+                $vector['microseconds'],
+                ((int) $at->format('U')) * 1_000_000 + ((int) $at->format('u')),
+                "record key [{$vector['tid']}]",
+            );
+
+            $this->assertSame($vector['clockId'], $tid->clockId());
+
+            $this->assertSame(
+                $vector['tid'],
+                (string) Tid::fromParts($vector['microseconds'], $vector['clockId']),
+            );
+        }
+
+        $sorted = $suite['ordering']['unsorted'];
+        sort($sorted);
+
+        $this->assertSame($suite['ordering']['sorted'], $sorted);
+    }
+
+    /**
+     * Not a vector, because it is about a running process rather than a format:
+     * two records made in the same microsecond must still get different keys,
+     * and they must still sort in the order they were made.
+     */
+    public function test_keys_stay_unique_and_increasing_under_pressure(): void
+    {
+        $keys = [];
+
+        for ($i = 0; $i < 5000; $i++) {
+            $keys[] = (string) Tid::now();
+        }
+
+        $sorted = $keys;
+        sort($sorted);
+
+        $this->assertSame($keys, $sorted, 'keys did not increase monotonically');
+        $this->assertCount(5000, array_unique($keys), 'keys collided');
     }
 
     public function test_p256_signatures_verify_and_reject(): void
