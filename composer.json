@@ -1,0 +1,53 @@
+{
+    "name": "streetmesh/protocol",
+    "description": "The StreetMesh protocol in framework-free PHP: identity, encoding, signing.",
+    "keywords": [
+        "streetmesh",
+        "atproto",
+        "did",
+        "did-plc",
+        "jws",
+        "dag-cbor"
+    ],
+    "homepage": "https://protocol.streetmesh.com",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "ext-curl": "*",
+        "ext-gmp": "*",
+        "ext-json": "*",
+        "ext-openssl": "*",
+        "ext-sodium": "*"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^11.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "StreetMesh\\Protocol\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "StreetMesh\\Protocol\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "scripts": {
+        "conformance": "git clone --depth 1 https://github.com/StreetMesh/Protocol.git .protocol && rm -rf conformance && mv .protocol/conformance conformance && rm -rf .protocol",
+        "test": [
+            "@types:check",
+            "phpunit"
+        ],
+        "types:check": "phpstan analyse"
+    },
+    "scripts-descriptions": {
+        "conformance": "Fetch the conformance vectors this package is measured against"
+    }
+}
