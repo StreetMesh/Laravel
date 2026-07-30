@@ -40,8 +40,7 @@ no overload that takes an array. That is deliberate: signing a structure means
 the verifier has to rebuild the same bytes from whatever it decoded, and
 everything in between — a framework tidying input, a JSON library ordering keys
 differently, an empty string becoming null — gets a vote it should never have
-had. Encode first, sign what you encoded. This package was written after two
-days spent learning that the hard way.
+had. Encode first, sign what you encoded.
 
 **DAG-CBOR sorts map keys by length, then bytewise.** RFC 7049's canonical
 order, not the plain lexicographic order RFC 8949 later adopted and most CBOR
@@ -85,9 +84,9 @@ final class MyNetwork implements StreetMesh\Protocol\Network
 
 ## Tests
 
-The vectors are the test suite. This package has almost none of its own, because
-writing a second set of expectations here would mean inventing a second
-definition and then agreeing with ourselves.
+The vectors are the test suite. This package has almost none of its own: a
+private set of expectations here would be a second definition of the protocol,
+and passing it would only prove self-consistency.
 
 ```sh
 composer conformance   # fetch the vectors
