@@ -66,6 +66,29 @@ final class P256 implements SigningKey
     }
 
     /**
+     * Rebuild a key that was put away.
+     *
+     * @param  string  $publicKey  base64 of the 33 compressed bytes
+     * @param  string  $privateKey  the PEM
+     */
+    public static function fromStored(string $publicKey, #[SensitiveParameter] string $privateKey): self
+    {
+        $raw = base64_decode($publicKey, true);
+
+        return $raw === false
+            ? throw new RuntimeException('That public key is not base64.')
+            : new self($raw, $privateKey);
+    }
+
+    /**
+     * The private half, for putting away. Handle accordingly.
+     */
+    public function secretKey(): string
+    {
+        return $this->privateKey;
+    }
+
+    /**
      * The public key as the 33 compressed bytes a multikey wants.
      */
     public function publicKey(): string
