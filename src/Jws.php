@@ -23,9 +23,9 @@ final class Jws
      * @param  array<string, mixed>  $claims
      * @param  string  $keyId  a DID verification method, e.g. did:web:chess.test#streetmesh
      */
-    public static function sign(array $claims, Ed25519 $key, string $keyId): string
+    public static function sign(array $claims, SigningKey $key, string $keyId): string
     {
-        $header = self::encode(self::json(['alg' => 'EdDSA', 'kid' => $keyId]));
+        $header = self::encode(self::json(['alg' => $key->algorithm(), 'kid' => $keyId]));
         $payload = self::encode(self::json($claims));
 
         $signature = $key->sign($header.'.'.$payload);
@@ -44,22 +44,29 @@ final class Jws
     {
         $header = self::decodeJson(self::part($compact, 0));
 
-        if (($header['alg'] ?? null) !== 'EdDSA') {
-            throw new RuntimeException('Only EdDSA signatures are accepted.');
+        /*
+         * Pinned to what the key itself says, never to what the document claims.
+         * Accepting an algorithm named in an unverified header is the classic
+         * JOSE footgun — it lets a document choose how it will be checked.
+         */
+        if (! in_array($header['alg'] ?? null, ['EdDSA', 'ES256', 'ES256K'], strict: true)) {
+            throw new RuntimeException('That signature names an algorithm this does not accept.');
         }
 
         return $header['kid'] ?? throw new RuntimeException('That document names no key.');
     }
 
     /**
-     * @param  string  $publicKey  base64 Ed25519
+     * @param  string  $multikey  the key as its owner published it, curve and all
      * @return array<string, mixed> the claims, once they are worth reading
      */
-    public static function verify(string $compact, string $publicKey): array
+    public static function verify(string $compact, string $multikey): array
     {
         [$header, $payload, $signature] = self::parts($compact);
 
-        if (! Ed25519::verify($header.'.'.$payload, $signature, $publicKey)) {
+        $raw = base64_decode(strtr($signature, '-_', '+/'), true);
+
+        if ($raw === false || ! Signature::verify($multikey, $header.'.'.$payload, $raw)) {
             throw new RuntimeException('That document does not verify against that key.');
         }
 

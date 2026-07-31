@@ -139,7 +139,7 @@ class ConformanceTest extends TestCase
             );
 
             // The reason this vector exists: a blank field must survive intact.
-            $this->assertSame('', Jws::verify($vector['compact'], $key->publicKey())['detail']['pgn']);
+            $this->assertSame('', Jws::verify($vector['compact'], $key->multikey())['detail']['pgn']);
         }
     }
 

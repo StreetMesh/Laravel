@@ -17,8 +17,23 @@ use SensitiveParameter;
  * to find out whether minting a `did:plc` in PHP is a morning's work or a
  * blocker. See SPIKE-DID.md.
  */
-final class P256
+final class P256 implements SigningKey
 {
+    public function multikey(): string
+    {
+        return Multikey::encode($this->publicKey, 'p256');
+    }
+
+    public function curve(): string
+    {
+        return 'p256';
+    }
+
+    public function algorithm(): string
+    {
+        return 'ES256';
+    }
+
     private function __construct(
         private readonly string $publicKey,
         #[SensitiveParameter]

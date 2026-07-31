@@ -13,8 +13,23 @@ use SensitiveParameter;
  * checked against the key the venue published — not because the venue is still
  * around to vouch for it.
  */
-final class Ed25519
+final class Ed25519 implements SigningKey
 {
+    public function multikey(): string
+    {
+        return Multikey::fromBase64($this->publicKey);
+    }
+
+    public function curve(): string
+    {
+        return 'ed25519';
+    }
+
+    public function algorithm(): string
+    {
+        return 'EdDSA';
+    }
+
     private function __construct(
         private readonly string $publicKey,
         #[SensitiveParameter]

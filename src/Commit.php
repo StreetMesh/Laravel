@@ -59,7 +59,7 @@ final class Commit
     /**
      * Sign it, which is the point.
      */
-    public function signedWith(Ed25519 $key): self
+    public function signedWith(SigningKey $key): self
     {
         return new self(
             $this->did,

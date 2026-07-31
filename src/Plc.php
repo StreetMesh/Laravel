@@ -144,19 +144,19 @@ final class Plc
      * rotation key held only there means moving out is at that server's
      * discretion, which rather defeats the point.
      *
-     * @param  array<int, P256>  $rotationKeys  highest authority first
+     * @param  array<int, SigningKey>  $rotationKeys  highest authority first
      * @return array<string, mixed> the signed operation
      */
     public static function genesis(
         array $rotationKeys,
-        P256 $signingKey,
+        SigningKey $signingKey,
         string $handle,
         string $serviceEndpoint,
     ): array {
         $operation = [
             'type' => 'plc_operation',
-            'rotationKeys' => array_map(fn (P256 $key): string => $key->didKey(), $rotationKeys),
-            'verificationMethods' => ['atproto' => $signingKey->didKey()],
+            'rotationKeys' => array_map(fn (SigningKey $key): string => 'did:key:'.$key->multikey(), $rotationKeys),
+            'verificationMethods' => ['atproto' => 'did:key:'.$signingKey->multikey()],
             'alsoKnownAs' => ['at://'.$handle],
             'services' => [
                 'atproto_pds' => [
