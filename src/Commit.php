@@ -33,21 +33,27 @@ final class Commit
 
     /**
      * @param  string  $did  whose records these are
-     * @param  string  $data  root of the record tree
-     * @param  string|null  $prev  the commit before this one, or null for the first
+     * @param  Cid  $data  root of the record tree — a link, not text
+     * @param  Cid|null  $prev  the commit before this one, or null for the first
      * @param  string  $rev  when, as a record key — so commits sort like everything else
+     * @param  Bytes|null  $signature  64 raw bytes, not text
      */
     private function __construct(
         public readonly string $did,
-        public readonly string $data,
-        public readonly ?string $prev,
+        public readonly Cid $data,
+        public readonly ?Cid $prev,
         public readonly string $rev,
-        public readonly ?string $signature = null,
+        public readonly ?Bytes $signature = null,
     ) {}
 
-    public static function of(string $did, string $data, ?string $prev = null, ?Tid $rev = null): self
+    public static function of(string $did, Cid|string $data, Cid|string|null $prev = null, ?Tid $rev = null): self
     {
-        return new self($did, $data, $prev, (string) ($rev ?? Tid::now()));
+        return new self(
+            $did,
+            $data instanceof Cid ? $data : Cid::parse($data),
+            $prev === null ? null : ($prev instanceof Cid ? $prev : Cid::parse($prev)),
+            (string) ($rev ?? Tid::now()),
+        );
     }
 
     /**
@@ -55,30 +61,32 @@ final class Commit
      */
     public function signedWith(Ed25519 $key): self
     {
-        $signature = $key->sign(DagCbor::encode($this->unsigned()));
-
         return new self(
             $this->did,
             $this->data,
             $this->prev,
             $this->rev,
-            rtrim(strtr(base64_encode($signature), '+/', '-_'), '='),
+            new Bytes($key->sign(DagCbor::encode($this->unsigned()))),
         );
     }
 
     /**
-     * Does this commit's signature check out against a key?
+     * Does this commit's signature check out against a published key?
+     *
+     * Takes the key as its owner published it — curve included — because the
+     * verifier does not get to choose the curve and an implementation that
+     * assumes one can read only its own documents.
      */
-    public function verify(string $publicKey): bool
+    public function verify(string $multikey): bool
     {
         if ($this->signature === null) {
             return false;
         }
 
-        return Ed25519::verify(
+        return Signature::verify(
+            $multikey,
             DagCbor::encode($this->unsigned()),
-            $this->signature,
-            $publicKey,
+            $this->signature->value,
         );
     }
 
@@ -87,7 +95,23 @@ final class Commit
      */
     public function cid(): Cid
     {
-        return Cid::forRecord($this->toArray());
+        return Cid::forBytes($this->toBytes());
+    }
+
+    /**
+     * The commit as it travels — which is the only form worth naming, since the
+     * name is the hash of exactly these bytes.
+     */
+    public function toBytes(): string
+    {
+        return DagCbor::encode($this->toArray());
+    }
+
+    public static function fromBytes(string $bytes): self
+    {
+        $decoded = DagCborDecoder::decode($bytes);
+
+        return self::fromArray(is_array($decoded) ? $decoded : throw new RuntimeException('That is not a commit.'));
     }
 
     /**
@@ -99,7 +123,7 @@ final class Commit
      */
     public function follows(self $earlier): bool
     {
-        return $this->prev === (string) $earlier->cid()
+        return (string) $this->prev === (string) $earlier->cid()
             && $this->did === $earlier->did
             && $this->rev > $earlier->rev;
     }
@@ -124,17 +148,31 @@ final class Commit
     public static function fromArray(array $commit): self
     {
         foreach (['did', 'data', 'rev'] as $required) {
-            if (! isset($commit[$required]) || ! is_string($commit[$required])) {
+            if (! isset($commit[$required])) {
                 throw new RuntimeException("A commit without [{$required}] is not a commit.");
             }
         }
 
+        $link = static fn (mixed $value): ?Cid => match (true) {
+            $value === null => null,
+            $value instanceof Cid => $value,
+            is_string($value) => Cid::parse($value),
+            default => throw new RuntimeException('A commit link must be a link.'),
+        };
+
         return new self(
-            $commit['did'],
-            $commit['data'],
-            $commit['prev'] ?? null,
-            $commit['rev'],
-            $commit['sig'] ?? null,
+            (string) $commit['did'],
+            // A commit whose root is absent commits to nothing, so it is not a
+            // commit however well formed the rest of it is.
+            $link($commit['data']) ?? throw new RuntimeException('A commit must name a record tree.'),
+            $link($commit['prev'] ?? null),
+            (string) $commit['rev'],
+            match (true) {
+                ! isset($commit['sig']) => null,
+                $commit['sig'] instanceof Bytes => $commit['sig'],
+                is_string($commit['sig']) => new Bytes($commit['sig']),
+                default => throw new RuntimeException('A commit signature must be bytes.'),
+            },
         );
     }
 

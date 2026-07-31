@@ -82,6 +82,33 @@ final class MyNetwork implements StreetMesh\Protocol\Network
 }
 ```
 
+## Checking against the live network
+
+```sh
+php bin/check-repo.php atproto.com
+php bin/check-repo.php did:plc:z72i7hdynmk6r22z27h6tvur
+```
+
+Downloads a real repository, takes it apart, and rebuilds it from nothing but
+the records inside — then compares every name it produced against the name that
+repository's own server had already given it. Read-only; it fetches public data
+and writes nothing.
+
+```
+  ✓ every block hashes to the name it arrived under 13293 blocks
+  ✓ the commit is signed by the key that identity publishes secp256k1
+  ✓ the commit names the identity we asked about
+  ✓ the tree rebuilds to the same root             bafyreihyl4gqkt7k6zav…
+  ✓ every node we built is in their archive, named the same 2806 of 2806
+  ✓ every record matches the name the tree gives it 10486 records
+```
+
+Nothing here is a fixture, which is the point. Passing against an arbitrary
+stranger's repository means this agrees with a running network rather than with
+its author — the only version of "correct" worth having for a format two parties
+must agree on. It has been run against repositories up to 205,922 records and
+54,922 tree nodes.
+
 ## Tests
 
 The vectors are the test suite. This package has almost none of its own: a
