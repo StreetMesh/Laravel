@@ -27,9 +27,21 @@ final class DagCbor
             $value === false => "\xf4",
             is_int($value) => self::integer($value),
             is_string($value) => self::head(3, strlen($value)).$value,
+
+            // Bytes rather than text, which CBOR distinguishes and PHP does not.
+            $value instanceof Bytes => self::head(2, strlen($value->value)).$value->value,
+
+            /*
+             * A link. Tag 42, then the identifier as a byte string with a
+             * leading zero — the multibase prefix saying "raw bytes, not text".
+             * The prefix is required and is the detail most often missed.
+             */
+            $value instanceof Cid => self::head(6, 42).self::encode(new Bytes("\x00".$value->toBytes())),
+
             is_array($value) => self::container($value),
             default => throw new InvalidArgumentException(
-                'DAG-CBOR here covers null, bool, int, string, list and map — not '.get_debug_type($value).'.'
+                'DAG-CBOR here covers null, bool, int, string, bytes, links, lists and maps — not '
+                .get_debug_type($value).'.'
             ),
         };
     }
@@ -40,17 +52,15 @@ final class DagCbor
     private static function container(array $value): string
     {
         /*
-         * PHP cannot tell an empty list from an empty map, and CBOR very much
-         * can. Nothing in a PLC operation is ever empty, so rather than pick a
-         * side silently this refuses — the same class of ambiguity that turned
-         * a blank string into a null and cost us two days.
+         * PHP cannot tell an empty list from an empty map and CBOR very much
+         * can, so one of them has to be chosen. An empty list wins, because
+         * `array_is_list([])` is true and because real documents contain them —
+         * a tree node with no entries of its own is ordinary.
+         *
+         * The cost is that an empty *map* cannot be expressed. Nothing here
+         * needs one, and a silent wrong answer would be worse than this
+         * sentence, so it is written down rather than discovered.
          */
-        if ($value === []) {
-            throw new InvalidArgumentException(
-                'An empty array is ambiguous in DAG-CBOR: PHP cannot say whether it is a list or a map.'
-            );
-        }
-
         if (array_is_list($value)) {
             return self::head(4, count($value)).implode('', array_map(self::encode(...), $value));
         }

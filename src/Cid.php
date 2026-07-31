@@ -53,6 +53,54 @@ final class Cid
         return new self('b'.self::base32(self::VERSION.self::DAG_CBOR.self::SHA256.$digest));
     }
 
+    /**
+     * A CID as it travels inside binary formats, rather than as text.
+     */
+    public static function fromBytes(string $bytes): self
+    {
+        return new self('b'.self::base32($bytes));
+    }
+
+    /**
+     * Back to the bytes, for writing into one.
+     */
+    public function toBytes(): string
+    {
+        return self::VERSION.self::DAG_CBOR.self::SHA256.$this->digest();
+    }
+
+    public function digest(): string
+    {
+        $prefix = strlen(self::VERSION.self::DAG_CBOR.self::SHA256);
+
+        return substr(self::base32Decode(substr($this->value, 1)), $prefix);
+    }
+
+    private static function base32Decode(string $encoded): string
+    {
+        $bytes = '';
+        $buffer = 0;
+        $pending = 0;
+
+        foreach (str_split($encoded) as $character) {
+            $index = strpos(self::BASE32, $character);
+
+            if ($index === false) {
+                throw new InvalidArgumentException("[{$character}] is not a base32 character.");
+            }
+
+            $buffer = ($buffer << 5) | $index;
+            $pending += 5;
+
+            if ($pending >= 8) {
+                $pending -= 8;
+                $bytes .= chr(($buffer >> $pending) & 255);
+            }
+        }
+
+        return $bytes;
+    }
+
     public static function parse(string $value): self
     {
         if (! str_starts_with($value, 'bafyrei') || strlen($value) !== 59) {
