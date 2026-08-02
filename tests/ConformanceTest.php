@@ -31,12 +31,17 @@ class ConformanceTest extends TestCase
 {
     private const VECTORS = __DIR__.'/../conformance';
 
+    private const ABSENT = 'Conformance vectors are absent. Run `composer conformance` to fetch them.';
+
+    /**
+     * The vectors are fetched on demand and gitignored, so a fresh checkout not
+     * having them is ordinary rather than broken, and this whole class stands
+     * down. It does not cover the data-provided tests below — see `named()`.
+     */
     public static function setUpBeforeClass(): void
     {
         if (! is_dir(self::VECTORS)) {
-            self::markTestSkipped(
-                'Conformance vectors are absent. Run `composer conformance` to fetch them.'
-            );
+            self::markTestSkipped(self::ABSENT);
         }
     }
 
@@ -53,13 +58,50 @@ class ConformanceTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{array<string, mixed>}>
+     * Every vector in a file, each under its own name — or one empty case.
+     *
+     * The empty case is what keeps an absent checkout from failing here.
+     * Providers run before `setUpBeforeClass`, so its skip cannot save them,
+     * and a provider cannot skip on its own behalf either: PHPUnit calls it
+     * before the test exists, so anything it raises — `markTestSkipped`
+     * included — is reported as an invalid provider, and yielding nothing at
+     * all is reported the same way. That is why only the data-provided tests
+     * ever failed while the ones reading their vectors inline skipped fine.
+     *
+     * So the provider always hands over at least one case, and the skip is
+     * raised where it works: inside the test. This also covers the odd case of
+     * a vectors directory that exists but is missing one file, which
+     * `setUpBeforeClass` would wave through.
+     *
+     * @return array<string, array{array<string, mixed>}>
      */
-    public static function dagCborVectors(): iterable
+    private static function named(string $file): array
     {
-        foreach (self::suite('encoding/dag-cbor.json')['vectors'] as $vector) {
-            yield $vector['name'] => [$vector];
+        $cases = [];
+
+        foreach (self::suite($file)['vectors'] as $vector) {
+            $cases[$vector['name']] = [$vector];
         }
+
+        return $cases !== [] ? $cases : ['no vectors' => [[]]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $vector
+     */
+    private function skipWithoutVectors(array $vector): void
+    {
+        if ($vector === []) {
+            $this->markTestSkipped(self::ABSENT);
+        }
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function dagCborVectors(): array
+    {
+        return self::named('encoding/dag-cbor.json');
     }
 
     /**
@@ -68,17 +110,17 @@ class ConformanceTest extends TestCase
     #[DataProvider('dagCborVectors')]
     public function test_dag_cbor_encoding(array $vector): void
     {
+        $this->skipWithoutVectors($vector);
+
         $this->assertSame($vector['hex'], bin2hex(DagCbor::encode($vector['value'])));
     }
 
     /**
-     * @return iterable<string, array{array<string, mixed>}>
+     * @return array<string, array{array<string, mixed>}>
      */
-    public static function multikeyVectors(): iterable
+    public static function multikeyVectors(): array
     {
-        foreach (self::suite('encoding/multikey.json')['vectors'] as $vector) {
-            yield $vector['name'] => [$vector];
-        }
+        return self::named('encoding/multikey.json');
     }
 
     /**
@@ -87,6 +129,8 @@ class ConformanceTest extends TestCase
     #[DataProvider('multikeyVectors')]
     public function test_multikey_encoding(array $vector): void
     {
+        $this->skipWithoutVectors($vector);
+
         $raw = (string) hex2bin($vector['publicKeyHex']);
 
         $this->assertSame($vector['multikey'], Multikey::encode($raw, $vector['curve']));
@@ -98,13 +142,11 @@ class ConformanceTest extends TestCase
      * Real identities, so passing this is agreement with the network rather
      * than with ourselves.
      *
-     * @return iterable<string, array{array<string, mixed>}>
+     * @return array<string, array{array<string, mixed>}>
      */
-    public static function didPlcVectors(): iterable
+    public static function didPlcVectors(): array
     {
-        foreach (self::suite('identity/did-plc.json')['vectors'] as $vector) {
-            yield $vector['name'] => [$vector];
-        }
+        return self::named('identity/did-plc.json');
     }
 
     /**
@@ -113,6 +155,8 @@ class ConformanceTest extends TestCase
     #[DataProvider('didPlcVectors')]
     public function test_did_plc_derivation(array $vector): void
     {
+        $this->skipWithoutVectors($vector);
+
         $this->assertSame($vector['did'], Plc::did($vector['operation']));
     }
 
