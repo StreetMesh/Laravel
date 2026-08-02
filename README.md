@@ -109,6 +109,26 @@ its author — the only version of "correct" worth having for a format two parti
 must agree on. It has been run against repositories up to 205,922 records and
 54,922 tree nodes.
 
+```sh
+php bin/check-discovery.php bnewbold.net
+```
+
+Walks a name a person could type all the way to the server that can grant
+permission over that account, using only what each hop publishes — DNS, the DID
+document, the PDS, the protected-resource document, the authorization server.
+
+```
+  ✓ the name resolves, and answers to itself     did:plc:44ybard66vv44zksje25o7dz
+  ✓ the chain reaches an authorization server    https://pds.robocracy.org
+  ✓ it requires pushed authorization requests    checked while parsing
+  ✓ it will read a client metadata document      checked while parsing
+  ✓ it accepts a signature we can make           ES256 offered
+```
+
+Run it against somebody who self-hosts rather than a Bluesky-hosted account —
+otherwise every chain ends at the same place and proves less than it appears to.
+`bnewbold.net`, `mackuba.eu` and `natalie.sh` are on three independent servers.
+
 ## Tests
 
 The vectors are the test suite. This package has almost none of its own: a
