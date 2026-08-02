@@ -25,7 +25,34 @@ final class Jws
      */
     public static function sign(array $claims, SigningKey $key, string $keyId): string
     {
-        $header = self::encode(self::json(['alg' => $key->algorithm(), 'kid' => $keyId]));
+        return self::signWith(['kid' => $keyId], $claims, $key);
+    }
+
+    /**
+     * The same, for a header this scheme does not get to decide.
+     *
+     * A record says which key signed it and nothing more, so `sign()` can build
+     * the whole header itself. Other things built on JWS cannot: a DPoP proof
+     * carries its own `typ` and hands over its public key inline, because the
+     * server receiving it has never seen that key and has nowhere to look it up.
+     *
+     * `alg` is not overridable and comes from the key, because a document
+     * choosing how it will be checked is the classic JOSE footgun — the same
+     * reason `keyId()` below refuses an algorithm it does not recognize.
+     *
+     * It also stays *first*, which is not cosmetic: the signature covers these
+     * bytes exactly as encoded, so moving a member changes every signature this
+     * package has ever produced. The conformance vectors caught that when this
+     * method was extracted, which is the entire reason they exist.
+     *
+     * @param  array<string, mixed>  $header
+     * @param  array<string, mixed>  $claims
+     */
+    public static function signWith(array $header, array $claims, SigningKey $key): string
+    {
+        unset($header['alg']);
+
+        $header = self::encode(self::json(['alg' => $key->algorithm(), ...$header]));
         $payload = self::encode(self::json($claims));
 
         $signature = $key->sign($header.'.'.$payload);
