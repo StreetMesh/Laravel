@@ -39,32 +39,40 @@ class ScopeTest extends TestCase
     {
         $scope = Scope::parse('repo:'.self::CHESS.'?action=create');
 
-        $this->assertTrue($scope?->allows(self::CHESS, Scope::CREATE));
-        $this->assertFalse($scope?->allows(self::CHESS, Scope::UPDATE));
-        $this->assertFalse($scope?->allows(self::CHESS, Scope::DELETE));
+        $this->assertNotNull($scope);
+        $this->assertTrue($scope->allows(self::CHESS, Scope::CREATE));
+        $this->assertFalse($scope->allows(self::CHESS, Scope::UPDATE));
+        $this->assertFalse($scope->allows(self::CHESS, Scope::DELETE));
     }
 
     public function test_several_actions_can_be_named(): void
     {
         $scope = Scope::parse('repo:'.self::CHESS.'?action=create&action=update');
 
-        $this->assertTrue($scope?->allows(self::CHESS, Scope::UPDATE));
-        $this->assertFalse($scope?->allows(self::CHESS, Scope::DELETE));
+        $this->assertNotNull($scope);
+        $this->assertTrue($scope->allows(self::CHESS, Scope::UPDATE));
+        $this->assertFalse($scope->allows(self::CHESS, Scope::DELETE));
     }
 
     public function test_several_collections_can_be_named(): void
     {
         $scope = Scope::parse('repo?collection=com.a.b&collection=com.c.d');
 
-        $this->assertTrue($scope?->allows('com.a.b', Scope::CREATE));
-        $this->assertTrue($scope?->allows('com.c.d', Scope::CREATE));
-        $this->assertFalse($scope?->allows('com.e.f', Scope::CREATE));
+        $this->assertNotNull($scope);
+        $this->assertTrue($scope->allows('com.a.b', Scope::CREATE));
+        $this->assertTrue($scope->allows('com.c.d', Scope::CREATE));
+        $this->assertFalse($scope->allows('com.e.f', Scope::CREATE));
     }
 
     public function test_a_wildcard_covers_every_type(): void
     {
-        $this->assertTrue(Scope::parse('repo:*')?->allows('anything.at.all', Scope::CREATE));
-        $this->assertFalse(Scope::parse('repo:*?action=delete')?->allows('anything.at.all', Scope::CREATE));
+        $everything = Scope::parse('repo:*');
+        $removalOnly = Scope::parse('repo:*?action=delete');
+
+        $this->assertNotNull($everything);
+        $this->assertNotNull($removalOnly);
+        $this->assertTrue($everything->allows('anything.at.all', Scope::CREATE));
+        $this->assertFalse($removalOnly->allows('anything.at.all', Scope::CREATE));
     }
 
     /**
