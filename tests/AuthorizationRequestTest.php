@@ -5,7 +5,10 @@ namespace StreetMesh\Protocol\Tests;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use StreetMesh\Protocol\AuthorizationRequest;
+use RuntimeException;
 use StreetMesh\Protocol\ClientAssertion;
+use StreetMesh\Protocol\ClientMetadata;
+use StreetMesh\Protocol\Jwk;
 use StreetMesh\Protocol\Jws;
 use StreetMesh\Protocol\P256;
 use StreetMesh\Protocol\Pkce;
@@ -161,5 +164,106 @@ class AuthorizationRequestTest extends TestCase
         $this->assertSame('refresh_token', $fields['grant_type']);
         $this->assertSame('a-refresh-token', $fields['refresh_token']);
         $this->assertArrayNotHasKey('code', $fields);
+    }
+
+    /**
+     * @param  array<string, Jwk>  $keys
+     * @return array<string, mixed>
+     */
+    private function published(array $keys): array
+    {
+        return ClientMetadata::keySet($keys);
+    }
+
+    public function test_an_assertion_checks_out_against_the_keys_that_client_publishes(): void
+    {
+        $key = P256::generate();
+
+        $claims = ClientAssertion::check(
+            ClientAssertion::for(self::CLIENT, 'https://home.test', $key),
+            self::CLIENT,
+            'https://home.test',
+            $this->published(['atproto' => Jwk::forP256($key)]),
+        );
+
+        $this->assertSame(self::CLIENT, $claims['iss']);
+    }
+
+    /**
+     * Without this, an assertion collected by one server could be replayed at
+     * another as though the venue had addressed it.
+     */
+    public function test_an_assertion_addressed_elsewhere_is_refused(): void
+    {
+        $key = P256::generate();
+
+        $this->expectException(RuntimeException::class);
+
+        ClientAssertion::check(
+            ClientAssertion::for(self::CLIENT, 'https://home.test', $key),
+            self::CLIENT,
+            'https://somewhere.else',
+            $this->published(['atproto' => Jwk::forP256($key)]),
+        );
+    }
+
+    public function test_an_assertion_signed_by_a_key_that_client_does_not_publish_is_refused(): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        ClientAssertion::check(
+            ClientAssertion::for(self::CLIENT, 'https://home.test', P256::generate()),
+            self::CLIENT,
+            'https://home.test',
+            $this->published(['atproto' => Jwk::forP256(P256::generate())]),
+        );
+    }
+
+    public function test_an_expired_assertion_is_refused(): void
+    {
+        $key = P256::generate();
+
+        $this->expectException(RuntimeException::class);
+
+        ClientAssertion::check(
+            ClientAssertion::for(self::CLIENT, 'https://home.test', $key, now: time() - 3600),
+            self::CLIENT,
+            'https://home.test',
+            $this->published(['atproto' => Jwk::forP256($key)]),
+        );
+    }
+
+    /**
+     * A key set holds two keys during a rotation — the outgoing one and the
+     * incoming one — so accepting only the first listed would break a venue at
+     * exactly the moment it was being careful.
+     */
+    public function test_an_assertion_still_checks_out_while_that_client_is_rotating_keys(): void
+    {
+        $incoming = P256::generate();
+
+        $claims = ClientAssertion::check(
+            ClientAssertion::for(self::CLIENT, 'https://home.test', $incoming),
+            self::CLIENT,
+            'https://home.test',
+            $this->published([
+                'outgoing' => Jwk::forP256(P256::generate()),
+                'atproto' => Jwk::forP256($incoming),
+            ]),
+        );
+
+        $this->assertSame(self::CLIENT, $claims['iss']);
+    }
+
+    public function test_a_client_publishing_no_keys_can_assert_nothing(): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        ClientAssertion::check(
+            ClientAssertion::for(self::CLIENT, 'https://home.test', P256::generate()),
+            self::CLIENT,
+            'https://home.test',
+            ['keys' => []],
+        );
     }
 }

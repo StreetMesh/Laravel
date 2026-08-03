@@ -148,4 +148,130 @@ class DpopTest extends TestCase
         $this->assertSame('abc', Dpop::nonceFrom(['dpop-nonce' => ['abc']]));
         $this->assertNull(Dpop::nonceFrom(['Content-Type' => 'application/json']));
     }
+
+    /**
+     * The answer a server actually wants: which key made this. It is what a
+     * token gets bound to, so everything else in the check is a precondition
+     * for this being worth anything.
+     */
+    public function test_checking_a_proof_says_which_key_made_it(): void
+    {
+        $key = $this->key();
+
+        $this->assertSame(
+            Jwk::forP256($key)->thumbprint(),
+            Dpop::check(Dpop::proof($key, 'POST', 'https://auth.example/oauth/par'), 'POST', 'https://auth.example/oauth/par'),
+        );
+    }
+
+    public function test_a_proof_made_for_another_request_is_refused(): void
+    {
+        $proof = Dpop::proof($this->key(), 'POST', 'https://auth.example/oauth/par');
+
+        foreach ([['GET', 'https://auth.example/oauth/par'], ['POST', 'https://auth.example/oauth/token']] as [$method, $url]) {
+            try {
+                Dpop::check($proof, $method, $url);
+                $this->fail("a proof for another request was accepted: {$method} {$url}");
+            } catch (RuntimeException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    /**
+     * The signature is checked before any claim is read, because until it
+     * passes the claims are just something a stranger wrote.
+     */
+    public function test_a_proof_whose_claims_were_altered_is_refused(): void
+    {
+        [$header, $payload, $signature] = explode('.', Dpop::proof($this->key(), 'POST', 'https://auth.example/oauth/par'));
+
+        $claims = json_decode((string) base64_decode(strtr($payload, '-_', '+/'), true), true);
+        $claims['htu'] = 'https://somewhere.else/oauth/par';
+
+        $forged = rtrim(strtr(base64_encode((string) json_encode($claims)), '+/', '-_'), '=');
+
+        $this->expectException(RuntimeException::class);
+
+        Dpop::check($header.'.'.$forged.'.'.$signature, 'POST', 'https://somewhere.else/oauth/par');
+    }
+
+    /**
+     * A key swapped for one the sender holds would let anybody present a proof
+     * for anybody's token — which is the attack this whole mechanism exists to
+     * stop, so it is worth an explicit test rather than trusting the library.
+     */
+    public function test_a_proof_resigned_with_another_key_does_not_pass_as_the_first(): void
+    {
+        $mine = Dpop::proof($this->key(), 'POST', 'https://auth.example/oauth/par');
+        $theirs = Dpop::proof($this->key(), 'POST', 'https://auth.example/oauth/par');
+
+        [$header] = explode('.', $mine);
+        [, $payload, $signature] = explode('.', $theirs);
+
+        $this->expectException(RuntimeException::class);
+
+        Dpop::check($header.'.'.$payload.'.'.$signature, 'POST', 'https://auth.example/oauth/par');
+    }
+
+    public function test_a_stale_proof_is_refused(): void
+    {
+        $old = Dpop::proof($this->key(), 'POST', 'https://auth.example/oauth/par', now: time() - 3600);
+
+        $this->expectException(RuntimeException::class);
+
+        Dpop::check($old, 'POST', 'https://auth.example/oauth/par');
+    }
+
+    public function test_a_proof_without_the_nonce_we_asked_for_is_refused(): void
+    {
+        $key = $this->key();
+        $url = 'https://auth.example/oauth/par';
+
+        $this->assertSame(
+            Jwk::forP256($key)->thumbprint(),
+            Dpop::check(Dpop::proof($key, 'POST', $url, nonce: 'abc'), 'POST', $url, nonce: 'abc'),
+        );
+
+        $this->expectException(RuntimeException::class);
+
+        Dpop::check(Dpop::proof($key, 'POST', $url), 'POST', $url, nonce: 'abc');
+    }
+
+    public function test_a_proof_made_for_a_different_token_is_refused(): void
+    {
+        $key = $this->key();
+        $url = 'https://pds.example/xrpc/x';
+
+        $this->expectException(RuntimeException::class);
+
+        Dpop::check(
+            Dpop::proof($key, 'GET', $url, accessToken: 'one-token'),
+            'GET',
+            $url,
+            accessToken: 'another-token',
+        );
+    }
+
+    /**
+     * Somebody sending their signing key by mistake is a compromise in
+     * progress, and carrying on would mean accepting a proof from a key that
+     * has just been given away.
+     */
+    public function test_a_proof_carrying_a_private_key_is_refused(): void
+    {
+        $key = $this->key();
+        $url = 'https://auth.example/oauth/par';
+
+        [$header, $payload, $signature] = explode('.', Dpop::proof($key, 'POST', $url));
+
+        $decoded = json_decode((string) base64_decode(strtr($header, '-_', '+/'), true), true);
+        $decoded['jwk']['d'] = 'a-private-scalar';
+
+        $tampered = rtrim(strtr(base64_encode((string) json_encode($decoded)), '+/', '-_'), '=');
+
+        $this->expectException(RuntimeException::class);
+
+        Dpop::check($tampered.'.'.$payload.'.'.$signature, 'POST', $url);
+    }
 }

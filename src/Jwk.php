@@ -50,6 +50,68 @@ final class Jwk
         return self::fromDetails($openssl);
     }
 
+    /**
+     * A key somebody else sent us, as it arrived.
+     *
+     * The receiving half of this class, and the reason it exists at all: a DPoP
+     * proof carries its key inline, so a server checking one has a JWK and
+     * nothing else — no DID to resolve, no document to fetch, nothing it had
+     * before the request arrived.
+     *
+     * Strict about the curve, because this is the only description of the key
+     * there is. Everything downstream treats it as P-256, so a document naming
+     * some other curve must be refused here rather than quietly reinterpreted.
+     *
+     * @param  array<string, mixed>  $jwk
+     */
+    public static function fromArray(array $jwk): self
+    {
+        if (($jwk['kty'] ?? null) !== 'EC' || ($jwk['crv'] ?? null) !== 'P-256') {
+            throw new RuntimeException('That key is not on P-256, which is the only curve read here.');
+        }
+
+        $coordinates = [];
+
+        foreach (['x', 'y'] as $name) {
+            $value = $jwk[$name] ?? null;
+
+            if (! is_string($value)) {
+                throw new RuntimeException("That key has no {$name} coordinate.");
+            }
+
+            $raw = base64_decode(strtr($value, '-_', '+/'), true);
+
+            /*
+             * Exactly 32 bytes. A short coordinate is not padded and accepted:
+             * two different encodings of one key would fingerprint differently,
+             * and a fingerprint that depends on how a number was written is not
+             * a fingerprint.
+             */
+            if ($raw === false || strlen($raw) !== 32) {
+                throw new RuntimeException("That key's {$name} coordinate is not 32 bytes.");
+            }
+
+            $coordinates[$name] = $raw;
+        }
+
+        return new self($coordinates['x'], $coordinates['y']);
+    }
+
+    /**
+     * The same key spelled the way everything else here spells keys.
+     *
+     * A multikey holds the compressed point — the x coordinate, prefixed by
+     * whether y is odd — so this is the compression, and it means a JWK can be
+     * handed to `Signature::verify` like any other key rather than needing a
+     * second verification path of its own.
+     */
+    public function multikey(): string
+    {
+        $parity = chr(2 + (ord($this->y[31]) & 1));
+
+        return Multikey::encode($parity.$this->x, 'p256');
+    }
+
     private static function fromDetails(OpenSSLAsymmetricKey $key): self
     {
         $details = openssl_pkey_get_details($key);

@@ -85,6 +85,116 @@ final class Dpop
     }
 
     /**
+     * Check a proof somebody sent us, and say which key made it.
+     *
+     * The returned thumbprint is the whole point. It is what a token is bound
+     * to, so a server issuing one records this, and a server accepting one
+     * compares this against what the token says. Everything else here is a
+     * precondition for that answer being worth anything.
+     *
+     * `jti` is not checked, and cannot be: refusing a replay means remembering
+     * every identifier seen inside the window, which is storage this layer does
+     * not have. The caller has to do it, and the caller is the only one who can.
+     *
+     * @param  string  $compact  the DPoP header, as it arrived
+     * @param  string|null  $nonce  what we last told them to echo, if we did
+     * @param  string|null  $accessToken  the token this accompanies, if any
+     * @return string the thumbprint of the key that signed it
+     */
+    public static function check(
+        string $compact,
+        string $method,
+        string $url,
+        ?string $nonce = null,
+        ?string $accessToken = null,
+        ?int $now = null,
+    ): string {
+        $now ??= time();
+        $header = self::header($compact);
+
+        if (($header['typ'] ?? null) !== self::TYPE) {
+            throw new RuntimeException('That is not a DPoP proof.');
+        }
+
+        if (! is_array($header['jwk'] ?? null)) {
+            throw new RuntimeException('That proof carries no key, so nothing can be checked against it.');
+        }
+
+        /*
+         * A private half here would mean somebody has sent us their signing key
+         * by mistake. Refused rather than ignored, because carrying on would
+         * mean accepting a proof whose maker has just been compromised.
+         */
+        if (isset($header['jwk']['d'])) {
+            throw new RuntimeException('That proof carries a private key. Refusing it.');
+        }
+
+        $key = Jwk::fromArray($header['jwk']);
+
+        // Verified before any claim inside it is read, since until this passes
+        // the claims are just something a stranger wrote.
+        $claims = Jws::verify($compact, $key->multikey());
+
+        if (($claims['htm'] ?? null) !== strtoupper($method)) {
+            throw new RuntimeException('That proof was made for a different method.');
+        }
+
+        if (($claims['htu'] ?? null) !== self::target($url)) {
+            throw new RuntimeException('That proof was made for a different URL.');
+        }
+
+        $issued = $claims['iat'] ?? null;
+
+        if (! is_int($issued) || abs($now - $issued) > self::LIFETIME_SECONDS) {
+            throw new RuntimeException('That proof is not from around now.');
+        }
+
+        if ($nonce !== null && ($claims['nonce'] ?? null) !== $nonce) {
+            throw new RuntimeException('That proof does not carry the nonce we asked for.');
+        }
+
+        /*
+         * Binds proof to token. Without it, a proof made for one request could
+         * be lifted and presented alongside a different token entirely.
+         */
+        if ($accessToken !== null) {
+            $expected = self::encode(hash('sha256', $accessToken, binary: true));
+
+            if (($claims['ath'] ?? null) !== $expected) {
+                throw new RuntimeException('That proof was not made for this token.');
+            }
+        }
+
+        if (! is_string($claims['jti'] ?? null) || $claims['jti'] === '') {
+            throw new RuntimeException('That proof has no identifier, so a replay of it could not be refused.');
+        }
+
+        return $key->thumbprint();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function header(string $compact): array
+    {
+        $parts = explode('.', $compact);
+
+        if (count($parts) !== 3) {
+            throw new RuntimeException('That is not a compact JWS.');
+        }
+
+        $decoded = base64_decode(strtr($parts[0], '-_', '+/'), true);
+
+        if ($decoded === false) {
+            throw new RuntimeException('That proof has an unreadable header.');
+        }
+
+        $header = json_decode($decoded, true);
+
+        return is_array($header) ? $header : throw new RuntimeException('That proof has an unreadable header.');
+    }
+
+    /**
      * The URL a proof commits to: no query, no fragment.
      *
      * Both are excluded by the specification, and the reason is worth keeping:
