@@ -62,6 +62,55 @@ final class Curl implements Network
     }
 
     /**
+     * @param  array<string, string>  $headers
+     * @return array{status: int, body: string}
+     */
+    public function post(string $url, string $body, array $headers = []): array
+    {
+        $handle = curl_init($url);
+
+        if ($handle === false) {
+            return ['status' => 0, 'body' => ''];
+        }
+
+        $lines = ['Content-Type: application/json'];
+
+        foreach ($headers as $name => $value) {
+            $lines[] = $name.': '.$value;
+        }
+
+        curl_setopt_array($handle, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_TIMEOUT => $this->timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT => $this->timeoutSeconds,
+            CURLOPT_HTTPHEADER => $lines,
+            CURLOPT_USERAGENT => 'streetmesh-protocol-php',
+
+            /*
+             * No redirects at all, where `get` allows three. A redirect on a
+             * write is a request to send this somewhere other than where it was
+             * addressed, and an operation is signed for a subject rather than
+             * for a destination — it would be replayed perfectly happily
+             * wherever it landed.
+             */
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_PROTOCOLS_STR => 'https',
+        ]);
+
+        $answer = curl_exec($handle);
+        $status = curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+
+        curl_close($handle);
+
+        return [
+            'status' => is_int($status) ? $status : 0,
+            'body' => is_string($answer) ? $answer : '',
+        ];
+    }
+
+    /**
      * @return array<int, string>
      */
     public function txt(string $name): array

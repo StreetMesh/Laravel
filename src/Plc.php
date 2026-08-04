@@ -179,7 +179,103 @@ final class Plc
         return $operation;
     }
 
+    /**
+     * Change the name an identity is known by.
+     *
+     * The operation `did:web` cannot express, and most of the reason for
+     * preferring this method. The identifier is the hash of the *genesis*
+     * operation, so it does not move — every record signed under the old name
+     * stays this person's, and anybody holding one can still resolve it.
+     *
+     * @param  array<string, mixed>  $previous  the signed operation at the head of the log
+     * @return array<string, mixed> the signed operation
+     */
+    public static function rename(array $previous, SigningKey $rotationKey, string $handle): array
+    {
+        return self::next($previous, $rotationKey, static function (array $operation) use ($handle): array {
+            $operation['alsoKnownAs'] = ['at://'.$handle];
 
+            return $operation;
+        });
+    }
+
+    /**
+     * Move to another server.
+     *
+     * The other half of what an identifier that is not an address buys you. The
+     * subject keeps their DID, their handle and their history; only the place
+     * their repository is served from changes.
+     *
+     * Signed by a rotation key, which is why that key must not live only on the
+     * server being left — a move at the discretion of the server you are
+     * leaving is not a move.
+     *
+     * @param  array<string, mixed>  $previous  the signed operation at the head of the log
+     * @return array<string, mixed> the signed operation
+     */
+    public static function moveTo(array $previous, SigningKey $rotationKey, string $serviceEndpoint): array
+    {
+        return self::next($previous, $rotationKey, static function (array $operation) use ($serviceEndpoint): array {
+            $operation['services']['atproto_pds']['endpoint'] = $serviceEndpoint;
+
+            return $operation;
+        });
+    }
+
+    /**
+     * Replace the key an identity signs with.
+     *
+     * Ordinary hygiene, or the first thing to do after a compromise. Note what
+     * does *not* happen: earlier signatures go on verifying, because the audit
+     * log says which key was current when — see `keyAt`.
+     *
+     * @param  array<string, mixed>  $previous  the signed operation at the head of the log
+     * @return array<string, mixed> the signed operation
+     */
+    public static function rekey(array $previous, SigningKey $rotationKey, SigningKey $signingKey): array
+    {
+        return self::next($previous, $rotationKey, static function (array $operation) use ($signingKey): array {
+            $operation['verificationMethods']['atproto'] = 'did:key:'.$signingKey->multikey();
+
+            return $operation;
+        });
+    }
+
+    /**
+     * The next operation in a log, however it differs from the last one.
+     *
+     * `prev` is the CID of the previous operation *including its signature*,
+     * which is what makes the log a chain rather than a pile: an operation
+     * names exactly the state it was written against, so two conflicting
+     * updates cannot both be applied and the directory can say which it holds.
+     *
+     * @param  array<string, mixed>  $previous
+     * @param  callable(array<string, mixed>): array<string, mixed>  $change
+     * @return array<string, mixed>
+     */
+    private static function next(array $previous, SigningKey $rotationKey, callable $change): array
+    {
+        if (! isset($previous['sig'])) {
+            throw new InvalidArgumentException(
+                'That operation has no signature, so it is not one the directory can be holding.'
+            );
+        }
+
+        $prev = (string) Cid::forRecord($previous);
+
+        // Everything the last operation said, less its signature — which
+        // belongs to that operation and never travels forward.
+        unset($previous['sig']);
+
+        $operation = $change($previous);
+        $operation['prev'] = $prev;
+
+        $signature = $rotationKey->sign(DagCbor::encode($operation));
+
+        $operation['sig'] = rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+
+        return $operation;
+    }
 
     /**
      * RFC 4648 base32 without padding, which PHP has no function for.

@@ -10,8 +10,9 @@ namespace StreetMesh\Protocol;
  * global HTTP client is a package that cannot be tested without one, and cannot
  * be dropped into a host that has its own.
  *
- * So it is one narrow interface, passed in. Two methods, because identity needs
- * exactly two things: fetch a document, and read a DNS TXT record.
+ * So it is one narrow interface, passed in. Three methods: fetch a document,
+ * read a DNS TXT record, and — only since identities became `did:plc` — submit
+ * a signed operation to a directory.
  */
 interface Network
 {
@@ -31,4 +32,22 @@ interface Network
      * @return array<int, string>
      */
     public function txt(string $name): array;
+
+    /**
+     * Submit a body to a URL, and hand back what came out.
+     *
+     * The one method here that changes something rather than asking about it,
+     * and the difference matters to the caller: `get` answers null for any
+     * ordinary failure because "is it there?" has a useful negative answer.
+     * Submitting has no useful negative answer — an operation that was refused
+     * and one that was never sent leave the caller in different places, and
+     * only one of them is safe to retry.
+     *
+     * So a refusal comes back as the body of the refusal, with the status, and
+     * deciding what it means is the caller's job.
+     *
+     * @param  array<string, string>  $headers
+     * @return array{status: int, body: string}
+     */
+    public function post(string $url, string $body, array $headers = []): array;
 }

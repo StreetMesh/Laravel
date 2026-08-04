@@ -37,6 +37,18 @@ class HandleTest extends TestCase
             {
                 return $this->txt === null ? [] : ['did='.$this->txt];
             }
+
+            /**
+             * Resolving an identity never writes, so reaching this is a bug
+             * rather than a case to stub.
+             *
+             * @param  array<string, string>  $headers
+             * @return array{status: int, body: string}
+             */
+            public function post(string $url, string $body, array $headers = []): array
+            {
+                throw new \LogicException('Nothing being tested here writes to the network.');
+            }
         };
     }
 

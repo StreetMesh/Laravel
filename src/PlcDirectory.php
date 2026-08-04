@@ -78,6 +78,39 @@ final class PlcDirectory
     }
 
     /**
+     * Put a signed operation on the record.
+     *
+     * The only method here that writes, and the only one whose failure is worth
+     * being loud about. Everything else asks a question with a useful negative
+     * answer; this either establishes an identity or does not, and a caller
+     * that carried on believing it had would hold a DID nobody can resolve.
+     *
+     * What the directory checks is what keeps it honest: the signature, and
+     * that `prev` names the operation actually at the head of this DID's log.
+     * It cannot invent an identity or reassign one — but it can and will refuse
+     * a badly formed one, and that refusal is worth reading rather than
+     * flattening into a boolean.
+     *
+     * @param  array<string, mixed>  $operation  signed, from Plc::genesis or Plc::update
+     */
+    public function submit(string $did, array $operation): void
+    {
+        $answer = $this->network->post(
+            $this->directory.'/'.$did,
+            json_encode($operation, JSON_THROW_ON_ERROR),
+        );
+
+        if ($answer['status'] >= 200 && $answer['status'] < 300) {
+            return;
+        }
+
+        throw new RuntimeException(
+            "The directory refused the operation for [{$did}]: "
+            .($answer['body'] === '' ? "it answered {$answer['status']} and nothing else" : $answer['body'])
+        );
+    }
+
+    /**
      * @return array<array-key, mixed>
      */
     private function json(string $url, string $complaint): array
