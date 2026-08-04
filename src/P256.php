@@ -19,6 +19,11 @@ use SensitiveParameter;
  */
 final class P256 implements SigningKey
 {
+    /**
+     * The order of the P-256 group, which decides which half a signature is in.
+     */
+    private const ORDER = 'FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551';
+
     public function multikey(): string
     {
         return Multikey::encode($this->publicKey, 'p256');
@@ -115,7 +120,35 @@ final class P256 implements SigningKey
             throw new RuntimeException('OpenSSL would not sign with that key.');
         }
 
-        return self::derToRaw($der);
+        return self::lowS(self::derToRaw($der));
+    }
+
+    /**
+     * The half of the signature ATProtocol will accept.
+     *
+     * For every ECDSA signature `(r, s)` there is an equally valid `(r, n - s)`
+     * — the same signature by every mathematical measure, and OpenSSL verifies
+     * both without complaint. ATProtocol requires the lower of the two and
+     * rejects the other, so half of everything signed here was refused by
+     * conformant software: repository commits, records, attestations, and the
+     * PLC operation that finally showed it.
+     *
+     * Intermittently, which is why it went unnoticed for so long. OpenSSL
+     * picks `s` at random, so it failed about half the time and never once in
+     * our own tests — `verify` below is OpenSSL too, and OpenSSL does not care.
+     */
+    private static function lowS(string $signature): string
+    {
+        $order = gmp_init(self::ORDER, 16);
+        $s = gmp_init(bin2hex(substr($signature, 32, 32)), 16);
+
+        if (gmp_cmp($s, gmp_div_q($order, 2)) <= 0) {
+            return $signature;
+        }
+
+        $lowered = gmp_strval(gmp_sub($order, $s), 16);
+
+        return substr($signature, 0, 32).(string) hex2bin(str_pad($lowered, 64, '0', STR_PAD_LEFT));
     }
 
     public function verify(string $message, string $signature, ?string $publicKey = null): bool
