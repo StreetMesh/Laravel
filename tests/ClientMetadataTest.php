@@ -16,7 +16,7 @@ class ClientMetadataTest extends TestCase
             clientId: 'https://games.test/client-metadata.json',
             clientName: 'Games',
             clientUri: 'https://games.test',
-            redirectUris: ['https://games.test/visit/callback'],
+            redirectUris: ['https://games.test/connect/callback'],
             jwksUri: 'https://games.test/jwks.json',
             scopes: array_values($scopes),
         );
@@ -97,7 +97,7 @@ class ClientMetadataTest extends TestCase
             clientId: 'http://games.test/client-metadata.json',
             clientName: 'Games',
             clientUri: 'https://games.test',
-            redirectUris: ['https://games.test/visit/callback'],
+            redirectUris: ['https://games.test/connect/callback'],
             jwksUri: 'https://games.test/jwks.json',
         );
     }
@@ -110,7 +110,7 @@ class ClientMetadataTest extends TestCase
             clientId: 'https://games.test/client-metadata.json',
             clientName: 'Games',
             clientUri: 'https://games.test',
-            redirectUris: ['http://games.test/visit/callback'],
+            redirectUris: ['http://games.test/connect/callback'],
             jwksUri: 'https://games.test/jwks.json',
         );
     }

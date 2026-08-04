@@ -101,7 +101,7 @@ $pkce = Pkce::generate();
 
 $fields = AuthorizationRequest::pushed(
     clientId: $client,
-    redirectUri: rtrim(dirname($client), '/').'/visit/callback',
+    redirectUri: rtrim(dirname($client), '/').'/connect/callback',
     state: bin2hex(random_bytes(8)),
     pkce: $pkce,
     assertion: ClientAssertion::for($client, $server->issuer, $key),

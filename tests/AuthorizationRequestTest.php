@@ -17,7 +17,7 @@ class AuthorizationRequestTest extends TestCase
 {
     private const CLIENT = 'https://games.test/client-metadata.json';
 
-    private const REDIRECT = 'https://games.test/visit/callback';
+    private const REDIRECT = 'https://games.test/connect/callback';
 
     /**
      * @return array<string, string>
