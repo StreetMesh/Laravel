@@ -30,11 +30,32 @@ final class PlcDirectory
     ) {}
 
     /**
+     * Where operations are sent, or a refusal to guess.
+     *
+     * Empty is not "use the usual one". Somewhere permanent and public is not
+     * a thing to default into: an operator who has not said where identities
+     * get published has not decided yet, and the answer to that is to stop
+     * rather than to pick the global registry on their behalf.
+     */
+    private function directory(): string
+    {
+        if (trim($this->directory) === '') {
+            throw new RuntimeException(
+                'No PLC directory is configured, and there is no sensible default for one. '
+                .'Set streetmesh.plc.directory — to a directory of your own while developing, '
+                .'because entries in the public one are permanent and global.'
+            );
+        }
+
+        return rtrim($this->directory, '/');
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function resolve(string $did): array
     {
-        return $this->json($this->directory.'/'.$did, "[{$did}] did not resolve.");
+        return $this->json($this->directory().'/'.$did, "[{$did}] did not resolve.");
     }
 
     /**
@@ -48,7 +69,7 @@ final class PlcDirectory
     public function auditLog(string $did): array
     {
         return $this->json(
-            $this->directory.'/'.$did.'/log/audit',
+            $this->directory().'/'.$did.'/log/audit',
             "[{$did}] has no readable log.",
         );
     }
@@ -95,8 +116,10 @@ final class PlcDirectory
      */
     public function submit(string $did, array $operation): void
     {
+        $this->refuseToLitter($operation);
+
         $answer = $this->network->post(
-            $this->directory.'/'.$did,
+            $this->directory().'/'.$did,
             json_encode($operation, JSON_THROW_ON_ERROR),
         );
 
@@ -108,6 +131,47 @@ final class PlcDirectory
             "The directory refused the operation for [{$did}]: "
             .($answer['body'] === '' ? "it answered {$answer['status']} and nothing else" : $answer['body'])
         );
+    }
+
+    /**
+     * Keep development out of the public record.
+     *
+     * An entry in the public directory is permanent and global. One naming a
+     * host that exists on one laptop is litter nobody can ever clear up, and it
+     * is the easiest possible mistake to make: the directory is a URL in
+     * configuration, and forgetting to change it does not look like anything.
+     *
+     * Written after making exactly that mistake — a package test suite pointed
+     * at the default published real identities for `alice.home.test`.
+     *
+     * @param  array<string, mixed>  $operation
+     */
+    private function refuseToLitter(array $operation): void
+    {
+        if ($this->directory !== self::DEFAULT) {
+            return;
+        }
+
+        $endpoint = (string) ($operation['services']['atproto_pds']['endpoint'] ?? '');
+        $host = strtolower((string) parse_url($endpoint, PHP_URL_HOST));
+
+        foreach (['.test', '.local', '.localhost', '.invalid', '.example'] as $reserved) {
+            if (str_ends_with($host, $reserved)) {
+                throw new RuntimeException(
+                    "Refusing to publish [{$host}] to the public directory at ".self::DEFAULT.'. '
+                    .'That host is reserved for local use, so the entry would be permanent, '
+                    .'global and resolvable by nobody. Point streetmesh.plc.directory at a '
+                    .'directory of your own.'
+                );
+            }
+        }
+
+        if ($host === 'localhost' || $host === '' || filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            throw new RuntimeException(
+                'Refusing to publish ['.($host ?: 'an operation with no host').'] to the public directory. '
+                .'Point streetmesh.plc.directory at a directory of your own.'
+            );
+        }
     }
 
     /**
