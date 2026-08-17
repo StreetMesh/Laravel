@@ -105,7 +105,7 @@ final class Curl implements Network
         curl_close($handle);
 
         return [
-            'status' => is_int($status) ? $status : 0,
+            'status' => $status,
             'body' => is_string($answer) ? $answer : '',
         ];
     }
