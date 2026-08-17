@@ -2,9 +2,11 @@
 
 The StreetMesh protocol in framework-free PHP: identity, encoding, signing.
 
-```sh
-composer require streetmesh/protocol
-```
+> **Not on Packagist yet**, so `composer require streetmesh/protocol` will not
+> find it. Until it is published, get it from
+> [`Server`](https://github.com/StreetMesh/Server), which is also where it is
+> developed — this repository is published from there, at `packages/protocol`.
+> Issues and pull requests belong there.
 
 Nothing here knows about a framework, a container, a configuration file, or a
 database. Classes take bytes and return bytes. The one place that genuinely
