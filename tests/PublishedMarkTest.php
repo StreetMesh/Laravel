@@ -20,6 +20,7 @@ final class PublishedMarkTest extends TestCase
     {
         $at = PublishedMark::at('tabletop.streetmesh.com');
 
+        $this->assertNotNull($at, 'a host that exists has a mark');
         $this->assertSame('https://tabletop.streetmesh.com/mark.svg', $at['light']);
         $this->assertSame('https://tabletop.streetmesh.com/mark-dark.svg', $at['dark']);
     }
@@ -32,6 +33,7 @@ final class PublishedMarkTest extends TestCase
     {
         $at = PublishedMark::at('Games.Example:8080/../elsewhere');
 
+        $this->assertNotNull($at, 'a host is recoverable from this');
         $this->assertSame('https://games.example/mark.svg', $at['light']);
     }
 
