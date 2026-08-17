@@ -49,5 +49,8 @@
     },
     "scripts-descriptions": {
         "conformance": "Fetch the conformance vectors this package is measured against"
+    },
+    "support": {
+        "source": "https://github.com/StreetMesh/Protocol-PHP"
     }
 }
