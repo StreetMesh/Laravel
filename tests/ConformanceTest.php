@@ -308,6 +308,47 @@ class ConformanceTest extends TestCase
         }
     }
 
+    /**
+     * The same arithmetic over bytes that are not a structure.
+     *
+     * Only the codec byte differs between these and the ones above, which is
+     * precisely why they are worth checking separately: every other layer
+     * agreeing is what makes a wrong codec so hard to notice. A blob hashed
+     * correctly and labelled `dag-cbor` produces a name of exactly the right
+     * shape and length that no other implementation would ever agree with.
+     */
+    public function test_blobs_are_named_under_the_raw_codec(): void
+    {
+        $vectors = self::suite('encoding/cid.json')['raw'] ?? [];
+
+        $this->assertNotEmpty($vectors);
+
+        foreach ($vectors as $vector) {
+            $bytes = base64_decode($vector['bytes'], strict: true);
+
+            if ($bytes === false) {
+                $this->fail("[{$vector['name']}] does not carry base64 bytes.");
+            }
+
+            $this->assertSame(
+                $vector['cid'],
+                (string) Cid::forRaw($bytes),
+                "CID for [{$vector['name']}]",
+            );
+
+            $this->assertTrue(Cid::parse($vector['cid'])->matchesBytes($bytes));
+            $this->assertFalse(Cid::parse($vector['cid'])->matchesBytes($bytes.'.'));
+
+            // Round trips through the binary form without losing which codec it
+            // was, which is the whole reason the codec is carried rather than
+            // assumed.
+            $this->assertSame(
+                $vector['cid'],
+                (string) Cid::fromBytes(Cid::parse($vector['cid'])->toBytes()),
+            );
+        }
+    }
+
     public function test_p256_signatures_verify_and_reject(): void
     {
         $suite = self::suite('signing/p256.json');
