@@ -1,0 +1,53 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      # Pinned rather than tracking the default branch, so that "which version
+      # of the protocol does this implement" stays an answerable question, and
+      # so a change over there cannot silently turn this build red. Bumping this
+      # is how the package adopts a protocol change, and deserves its own commit.
+      PROTOCOL_REF: d6badc8a2bc09a229d5418cec2d39a57d64cc568
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, gmp, json, openssl, sodium
+          coverage: none
+
+      - name: Fetch the conformance vectors
+        run: |
+          git clone --no-checkout --filter=blob:none https://github.com/StreetMesh/Protocol.git .protocol
+          git -C .protocol checkout "$PROTOCOL_REF" -- conformance
+          mv .protocol/conformance conformance
+          rm -rf .protocol
+          echo "Vectors from StreetMesh/Protocol@$PROTOCOL_REF"
+          find conformance -name '*.json' | sort
+
+      - run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Static analysis
+        run: composer types:check
+
+      - name: Conformance
+        run: vendor/bin/phpunit
+
+      # The vectors are language-agnostic on purpose, so the runner that
+      # validates them is not ours either. Running it here means a change to
+      # this package cannot quietly disagree with the second implementation.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cross-check against the independent runner
+        run: node conformance/runners/verify.mjs
