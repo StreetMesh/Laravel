@@ -1,6 +1,6 @@
 {
     "name": "streetmesh/laravel",
-    "description": "Turns a Laravel application into a StreetMesh server: portable identity, records, and the two halves people live in and gather at.",
+    "description": "Turns a Laravel application into a StreetMesh server.",
     "keywords": [
         "streetmesh",
         "laravel",
