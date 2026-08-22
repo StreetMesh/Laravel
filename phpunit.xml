@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true">
+    <testsuites>
+        <testsuite name="streetmesh">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include><directory>src</directory></include>
+    </source>
+    <php>
+        <env name="DB_CONNECTION" value="testing"/>
+        <!-- Nowhere real, and never the public directory: an entry published
+             there is permanent and global. The protocol refuses to write a
+             local-only handle to it, which is what these tests would do. -->
+        <env name="STREETMESH_PLC_DIRECTORY" value="https://plc.invalid"/>
+    </php>
+</phpunit>

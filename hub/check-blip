@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#
+# Does a table survive somebody's socket dropping?
+#
+#   ./check-blip
+#
+# Same certificate note as the others: Node does not read the system keychain,
+# so without Herd's CA every ticket looks unverifiable.
+
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+export NODE_EXTRA_CA_CERTS="$HOME/Library/Application Support/Herd/config/valet/CA/LaravelValetCASelfSigned.pem"
+
+node --experimental-strip-types "$here/bin/check-blip.ts"

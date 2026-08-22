@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#
+# Check that a ticket opens a door, and that nothing else does.
+#
+# Same certificate note as check-ticket: Node does not read the system keychain,
+# so without Herd's CA every fetch of the venue's DID document fails and every
+# ticket looks unverifiable.
+
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+export NODE_EXTRA_CA_CERTS="$HOME/Library/Application Support/Herd/config/valet/CA/LaravelValetCASelfSigned.pem"
+
+node --experimental-strip-types "$here/bin/check-join.ts"

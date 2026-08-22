@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Check that a ticket the venue mints is one this half will accept.
+#
+#   hub/check-ticket
+#
+# The CA line is the whole reason this is a script rather than a command to
+# remember. Herd issues its own certificates, and Node does not use the system
+# keychain — so without it every fetch of the venue's DID document fails, and
+# the failure looks exactly like a ticket that will not verify. The prototype
+# lost time to this twice before writing it down.
+
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Where the application is, found rather than assumed.
+#
+# This library used to sit at the repository root beside `bin/`, so `../bin`
+# was the answer. It lives inside the package now, which in a real install is
+# `vendor/streetmesh/laravel/hub` — a different distance from the application
+# every time. So walk up until something looks like a Laravel application.
+#
+# `mint-ticket.php` has to stay on that side: it boots the application to mint
+# a ticket with the server's real identity, which is exactly what makes this
+# check worth running.
+app="$here"
+while [[ "$app" != "/" && ! -f "$app/artisan" ]]; do
+    app="$(dirname "$app")"
+done
+
+if [[ ! -f "$app/bin/mint-ticket.php" ]]; then
+    echo "  No application above $here that can mint a ticket." >&2
+    echo "  This check needs a StreetMesh server it can boot." >&2
+    exit 1
+fi
+
+export NODE_EXTRA_CA_CERTS="$HOME/Library/Application Support/Herd/config/valet/CA/LaravelValetCASelfSigned.pem"
+
+if [[ ! -f "$NODE_EXTRA_CA_CERTS" ]]; then
+    echo "  No Herd certificate authority at:" >&2
+    echo "  $NODE_EXTRA_CA_CERTS" >&2
+    echo >&2
+    echo "  Without it Node cannot verify a .test certificate, and a ticket that" >&2
+    echo "  is perfectly good will look unverifiable." >&2
+    exit 1
+fi
+
+php "$app/bin/mint-ticket.php" | node --experimental-strip-types "$here/bin/check-ticket.ts"
