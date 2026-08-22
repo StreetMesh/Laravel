@@ -1,0 +1,69 @@
+/**
+ * The rules of {{ title }}, which run in the hub and nowhere else.
+ *
+ * A browser is somebody else's computer. Anything that decides what may happen
+ * — whose turn it is, whether a move is legal, who won — has to be decided
+ * here, because here is the only place every participant is looking at the
+ * same copy.
+ *
+ * This holds the present moment and forgets everything when it stops. What
+ * *happened* belongs to the venue, which signs it, and to the people whose
+ * records it goes into. So anything that must survive a restart has to reach
+ * the venue before it is acknowledged to anybody.
+ */
+
+import { MapSchema, schema } from '@colyseus/schema'
+import type { Client } from '@colyseus/core'
+import { Occupant, VenueRoom, type Ticket } from '@streetmesh/hub'
+
+export const {{ class }}State = schema(
+  {
+    /*
+     * Who is here. Every room carries this — it is what lets a table show that
+     * somebody is in a party, and what makes a seat mean anything.
+     */
+    occupants: { map: Occupant },
+  },
+  '{{ class }}State',
+)
+
+type {{ class }}StateType = InstanceType<typeof {{ class }}State>
+
+export class {{ class }}Room extends VenueRoom<{{ class }}StateType> {
+  maxClients = 16
+
+  /** Called once, when the room opens. Build the state and listen. */
+  protected opened(): void {
+    this.state = new {{ class }}State()
+
+    // this.onMessage('something', (client, payload) => { … })
+  }
+
+  /**
+   * Somebody arrived holding a ticket the venue signed.
+   *
+   * `ticket.seat` is what the venue said they may sit in, and it is the venue's
+   * word rather than theirs — a name a person types is a name they could choose
+   * to be somebody else's.
+   */
+  protected seated(client: Client, ticket: Ticket): void {
+    //
+  }
+
+  /**
+   * What happened, or null while it is still happening.
+   *
+   * The venue asks this when it wants to write the outcome down. Null means
+   * "not over" and is the right answer until it is.
+   */
+  result(): Record<string, unknown> | null {
+    return null
+  }
+}
+
+/*
+ * The default export is the contract. The venue copies this directory into the
+ * hub it builds and imports exactly this shape — the name here must be the same
+ * NSID the Experience class uses, because they are one name for one thing.
+ */
+export default { name: '{{ nsid }}', room: {{ class }}Room }

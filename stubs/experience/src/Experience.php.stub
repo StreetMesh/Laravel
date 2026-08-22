@@ -1,0 +1,115 @@
+<?php
+
+namespace {{ namespace }};
+
+use StreetMesh\Server\Venue\Experiences\Audience;
+use StreetMesh\Server\Venue\Experiences\Experience;
+use StreetMesh\Server\Venue\Gatherings\Gathering;
+
+/**
+ * {{ title }}, as something a venue hosts.
+ *
+ * An experience is not a capability. A capability answers "what kind of server
+ * is this" and is announced in a DID document to strangers before they decide
+ * to come. This answers "what can I do here", which is nobody's business until
+ * they have arrived and looked at the menu.
+ */
+final class {{ class }}Experience implements Experience{{ settlesInterface }}
+{
+    /**
+     * One name for three things: the collection its records go in, the room
+     * type its hub serves, and the experience itself. Reverse-domain, so two
+     * authors cannot collide without doing it deliberately.
+     */
+    public const COLLECTION = '{{ nsid }}';
+
+    public function name(): string
+    {
+        return self::COLLECTION;
+    }
+
+    public function title(): string
+    {
+        return '{{ title }}';
+    }
+
+    public function description(): string
+    {
+        return '{{ description }}';
+    }
+
+    /** A Flux icon name, for the gallery. */
+    public function icon(): string
+    {
+        return '{{ icon }}';
+    }
+
+    public function route(): string
+    {
+        return '{{ slug }}.lobby';
+    }
+
+    /**
+     * What the button into it says. Null is the venue's own word, which fits
+     * most things and fits nothing well — you know whether people play this,
+     * watch it, browse it or bid at it.
+     */
+    public function action(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * A second way in, for somebody who only wants to look.
+     *
+     * `route()` asks something of people: taking part means arriving with a
+     * name another server issued. That is the right toll for playing and much
+     * too high for watching. Null is the ordinary answer — most things are not
+     * a spectator sport.
+     *
+     * @return array{label: string, route: string}|null
+     */
+    public function watching(): ?array
+    {
+        return null;
+    }
+
+    /**
+     * Who may watch this one while it is happening.
+     *
+     * Asked per gathering rather than per experience, because privacy is not a
+     * property of the kind of thing: two of these at one venue may reasonably
+     * differ. Required, with no default anywhere — a venue that assumed one
+     * would be deciding on somebody else's behalf how visible their gathering
+     * is, and the safe assumption and the useful one point opposite ways.
+     *
+     * This governs looking, never doing.
+     */
+    public function audience(Gathering $gathering): Audience
+    {
+        return Audience::Visitors;
+    }
+
+    /**
+     * What a visitor has to agree to before this can do its job.
+     *
+     * Declared rather than configured, so that installing this asks for what it
+     * needs. A venue whose configuration and installed packages disagreed would
+     * walk somebody through a consent screen and then fail to write the record
+     * it had just promised them.
+     *
+     * Empty while this writes nothing down. The moment it does:
+     *
+     *     return [(string) Scope::forRepo([self::COLLECTION], [Scope::CREATE])];
+     *
+     * `action=create` and nothing more, so a visitor reading their own server's
+     * consent screen can see it cannot go back and change what it wrote.
+     *
+     * @return array<int, string>
+     */
+    public function scopes(): array
+    {
+        return [];
+    }
+
+{{ roomMethod }}}

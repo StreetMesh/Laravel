@@ -1,0 +1,47 @@
+<?php
+
+namespace {{ namespace }}\Tests;
+
+use StreetMesh\Protocol\Network;
+
+/**
+ * A network that answers nothing, for tests that should not be asking.
+ *
+ * Bound by default rather than opted into, because the tests that reach the
+ * outside world by accident are exactly the ones that did not think they
+ * would. A suite that inherited the public PLC directory once published thirty
+ * permanent, global identities for hosts that existed on one laptop.
+ *
+ * A test that wants particular answers binds its own.
+ */
+final class OfflineNetwork implements Network
+{
+    /** @var array<int, array{url: string, body: string}> */
+    public array $submitted = [];
+
+    public function get(string $url): ?string
+    {
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function txt(string $name): array
+    {
+        return [];
+    }
+
+    /**
+     * Recorded rather than refused, so a test can look at what was sent.
+     *
+     * @param  array<string, string>  $headers
+     * @return array{status: int, body: string}
+     */
+    public function post(string $url, string $body, array $headers = []): array
+    {
+        $this->submitted[] = ['url' => $url, 'body' => $body];
+
+        return ['status' => 200, 'body' => ''];
+    }
+}

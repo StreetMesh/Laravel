@@ -1,0 +1,12 @@
+{
+    "name": "{{ roomPackage }}",
+    "version": "0.0.1",
+    "description": "The {{ title }} room, for a StreetMesh hub.",
+    "license": "MIT",
+    "type": "module",
+    "main": "src/room.ts",
+    "peerDependencies": {
+        "@streetmesh/hub": "*"
+    },
+    "dependencies": {}
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="{{ slug }}">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <!-- Nothing in a test may reach the real directory. Entries there are
+             permanent and global, and a suite that published thirty of them is
+             how this line came to exist. -->
+        <env name="STREETMESH_PLC_DIRECTORY" value="https://plc.invalid"/>
+    </php>
+</phpunit>

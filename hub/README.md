@@ -7,9 +7,13 @@
 
 **The authoritative half of a venue: rooms, and who is allowed in them.**
 
-> Developed in [`Server`](https://github.com/StreetMesh/Server), at `hub/`, and
-> published here. Issues and pull requests belong there. Not on npm yet, so
-> `npm install @streetmesh/hub` will not find it.
+> Developed in [`Laravel`](https://github.com/StreetMesh/Laravel), at `hub/`,
+> and published here. Issues and pull requests belong there.
+>
+> Most people never install this. A venue builds its own hub out of it —
+> `php artisan hub:build` copies this in beside the rooms its experiences
+> ship, and rewrites the import. Installing it directly is for writing a room
+> against, and for reading.
 
 Anything people do together needs one place that decides what is true *right
 now* — whose turn it is, where the video is paused, what the current bid stands

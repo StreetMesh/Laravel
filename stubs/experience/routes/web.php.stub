@@ -1,0 +1,23 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+
+/*
+ * Reading before acting, and the order matters.
+ *
+ * A literal path has to be registered before a route with a parameter that
+ * could swallow it — `{key}` matches the word `watch` perfectly well, and
+ * Laravel takes the first one it finds. Anything readable by a passer-by goes
+ * above; anything that acts goes inside the group below.
+ */
+Route::livewire('experiences/{{ slug }}', '{{ slug }}::lobby')->name('{{ slug }}.lobby');
+
+/*
+ * Arriving is the toll for doing, never for looking. `visitor` asks whether
+ * this browser is acting under permission somebody's own server gave us —
+ * which is not the same question as whether anybody is signed in, because a
+ * venue holds no accounts at all.
+ */
+Route::middleware('visitor')->group(function (): void {
+    //
+});

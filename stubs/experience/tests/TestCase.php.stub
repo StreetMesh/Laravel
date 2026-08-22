@@ -1,0 +1,72 @@
+<?php
+
+namespace {{ namespace }}\Tests;
+
+use Flux\FluxServiceProvider;
+use Livewire\LivewireServiceProvider;
+use Orchestra\Testbench\TestCase as Orchestra;
+use StreetMesh\Protocol\Network;
+use StreetMesh\Server\ServerServiceProvider;
+use {{ namespace }}\{{ class }}ServiceProvider;
+
+abstract class TestCase extends Orchestra
+{
+    /**
+     * @return array<int, class-string>
+     */
+    protected function getPackageProviders($app): array
+    {
+        return [
+            LivewireServiceProvider::class,
+            FluxServiceProvider::class,
+            ServerServiceProvider::class,
+            {{ class }}ServiceProvider::class,
+        ];
+    }
+
+    protected function defineEnvironment($app): void
+    {
+        /*
+         * Nothing here talks to the outside world.
+         *
+         * A default rather than something each test opts into, because the
+         * tests that reach the network by accident are exactly the ones that
+         * did not think they would. A suite that inherited the public PLC
+         * directory once published thirty permanent global identities for
+         * hosts that existed on one laptop.
+         */
+        $app->instance(Network::class, new OfflineNetwork);
+
+        // Identities are encrypted at rest, so a server without a key holds none.
+        $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+        $app['config']->set('database.default', 'testing');
+
+        /*
+         * SQLite leaves foreign keys off unless asked, so a delete that
+         * cascades in production quietly leaves the child rows behind here.
+         */
+        $app['config']->set('database.connections.testing.foreign_key_constraints', true);
+
+        /* A venue refuses to boot without somewhere live to point at. */
+        $app['config']->set('streetmesh.venue.hub', 'wss://hub.invalid');
+        $app['config']->set('streetmesh.venue.secret', 'a-secret-shared-with-the-hub');
+
+        $app['config']->set('streetmesh.host', 'games.test');
+        $app['config']->set('app.url', 'https://games.test');
+        $app['url']->forceRootUrl('https://games.test');
+        $app['url']->forceScheme('https');
+
+        /*
+         * A stand-in for the host's chrome. Screens in a package are written
+         * against the application's layout, so they cannot render without one.
+         */
+        $app['config']->set('livewire.component_namespaces.layouts', __DIR__.'/fixtures/views/layouts');
+    }
+
+    protected function defineDatabaseMigrations(): void
+    {
+        $this->loadLaravelMigrations();
+
+        $this->loadMigrationsFrom(__DIR__.'/../vendor/streetmesh/laravel/database/migrations');
+    }
+}

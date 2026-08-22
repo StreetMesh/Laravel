@@ -1,0 +1,12 @@
+{{--
+    A stand-in for the host application's layout.
+
+    Screens in a package are written against the chrome the application
+    provides, so rendering one in a test needs something to render into. This
+    is the smallest thing that is enough.
+--}}
+<!doctype html>
+<html lang="en">
+<head><title>{{ $title ?? '' }}</title></head>
+<body>{{ $slot }}</body>
+</html>

@@ -35,6 +35,7 @@ use StreetMesh\Server\Protocol\Records\Record;
 use StreetMesh\Server\Protocol\Records\RecordStore;
 use StreetMesh\Server\Venue\Console\BuildHub;
 use StreetMesh\Server\Venue\Console\DeployHub;
+use StreetMesh\Server\Venue\Console\MakeExperience;
 use StreetMesh\Server\Venue\Console\TidyGatherings;
 use StreetMesh\Server\Venue\Console\TidyParties;
 use StreetMesh\Server\Venue\Readiness;
@@ -308,7 +309,7 @@ class ServerServiceProvider extends ServiceProvider
         $this->protectSessionDescriptions();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([BuildHub::class, DeployHub::class, TidyGatherings::class, TidyParties::class]);
+            $this->commands([BuildHub::class, DeployHub::class, MakeExperience::class, TidyGatherings::class, TidyParties::class]);
         }
 
         /*

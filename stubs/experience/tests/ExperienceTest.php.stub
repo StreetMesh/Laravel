@@ -1,0 +1,42 @@
+<?php
+
+namespace {{ namespace }}\Tests;
+
+use {{ namespace }}\{{ class }}Experience;
+use StreetMesh\Server\Venue\Experiences\Experiences;
+
+/**
+ * The first things to be true of any experience.
+ *
+ * Not much, and deliberately: what this checks is that the venue can see it at
+ * all, and that the one name it has means the same thing everywhere. The
+ * interesting tests are the ones you write next.
+ */
+class {{ class }}Test extends TestCase
+{
+    public function test_installing_it_puts_it_on_the_menu(): void
+    {
+        $offered = $this->app->make(Experiences::class);
+
+        $this->assertTrue($offered->has({{ class }}Experience::COLLECTION));
+        $this->assertSame('{{ title }}', $offered->get({{ class }}Experience::COLLECTION)?->title());
+    }
+
+    /**
+     * The route it names has to exist, because the gallery links to it — and a
+     * menu entry that leads nowhere fails at the moment somebody presses it
+     * rather than at the moment it was wrong.
+     */
+    public function test_the_way_in_is_a_real_route(): void
+    {
+        $this->get(route((new {{ class }}Experience)->route()))->assertOk();
+    }
+
+    /** And it is readable by a passer-by, who has not arrived and may not. */
+    public function test_a_stranger_can_see_what_this_is(): void
+    {
+        $this->get(route((new {{ class }}Experience)->route()))
+            ->assertOk()
+            ->assertSee('{{ title }}');
+    }
+}

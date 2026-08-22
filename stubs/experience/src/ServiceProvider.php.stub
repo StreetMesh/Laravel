@@ -1,0 +1,44 @@
+<?php
+
+namespace {{ namespace }};
+
+use Illuminate\Support\ServiceProvider;
+use Livewire\Livewire;
+use StreetMesh\Server\Protocol\Capabilities\Capabilities;
+use StreetMesh\Server\Venue\Experiences\Experiences;
+
+class {{ class }}ServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+        $this->app->make(Experiences::class)->register(new {{ class }}Experience);
+
+        $this->loadViewsFrom(__DIR__.'/../resources/views', '{{ slug }}');
+
+        /*
+         * Livewire keeps its own register of namespaces, separate from Blade's.
+         * `loadViewsFrom` above is what makes `{{ slug }}::something` resolvable
+         * as a view; it does nothing for `<livewire:{{ slug }}::lobby />`,
+         * because Livewire's finder consults only what `addNamespace` gave it.
+         *
+         * Both are needed. Leaving one out is the commonest way a component in
+         * a package is "not found" while the view plainly exists.
+         */
+        Livewire::addNamespace('{{ slug }}', viewPath: __DIR__.'/../resources/views/livewire');
+
+        /*
+         * Switched off means gone. A server that is not a venue cannot host
+         * this, and serving its screens there would offer people a door into
+         * something that can never open.
+         *
+         * `offers()` rather than `has()`: this package boots before the venue
+         * registers itself, so asking the registry would answer "no" on a
+         * server that plainly is a venue.
+         */
+        if (! $this->app->make(Capabilities::class)->offers('venue')) {
+            return;
+        }
+
+        $this->app['router']->middleware('web')->group(__DIR__.'/../routes/web.php');
+    }
+}
