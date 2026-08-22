@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+#
+# Publish each package in this repository to the repository people install it
+# from.
+#
+#   composer split              # do it
+#   composer split -- --dry-run # say what it would do, and touch nothing
+#
+# Packages are developed here and released from here. Packagist reads one
+# package per repository, at the root of it, so a repository holding five of
+# them under packages/ is not something it can serve. `git subtree split`
+# rewrites one subdirectory's history so its files sit at the root, which is
+# the shape Packagist wants, and that is what gets pushed.
+#
+# The commits are the same commits. A split reuses what is already in this
+# history rather than synthesising new objects, so every push here is an
+# ordinary fast-forward and nothing is ever rewritten at the far end. That is
+# also the safety net: if somebody has pushed to one of those repositories
+# directly, the push is refused rather than quietly winning, and this stops and
+# says which one.
+#
+# Nothing here ever forces. If you find yourself wanting to, the question to
+# answer first is what is in the other repository that is not in this one.
+
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$here"
+
+branch="${STREETMESH_SPLIT_BRANCH:-main}"
+
+dry_run=false
+if [ "${1:-}" = "--dry-run" ]; then
+    dry_run=true
+fi
+
+say() { printf '  %s\n' "$*"; }
+fail() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
+
+# A split takes its content from HEAD, so anything uncommitted is invisible to
+# it. Publishing what you are not looking at is the kind of surprise that gets
+# found much later, in somebody else's install.
+if [ -n "$(git status --porcelain)" ]; then
+    fail "The working tree has changes. Commit them, or stash them, before publishing."
+fi
+
+# Everything published has to be reachable in the repository it was published
+# from, or the package repositories carry code whose history exists on one
+# laptop.
+git fetch --quiet origin "$branch"
+if [ "$(git rev-list --count "origin/$branch..HEAD")" != "0" ]; then
+    fail "HEAD is ahead of origin/$branch. Push this repository first — otherwise the
+  packages carry commits that the repository they came from has never seen."
+fi
+
+# Where each one goes, read from the field that already answers the question:
+# `support.source` is what Packagist shows as a package's Source link, and npm's
+# `repository` is the same idea. A list kept here as well would be a second
+# copy, and the way you find out two copies disagree is that something is
+# published to the wrong place.
+targets() {
+    php -r '
+        $found = [];
+
+        foreach (glob("packages/*/composer.json") as $file) {
+            $data = json_decode(file_get_contents($file), true);
+            $source = $data["support"]["source"] ?? null;
+
+            if ($source !== null) {
+                $found[] = [dirname($file), $source, $data["name"] ?? basename(dirname($file))];
+            }
+        }
+
+        if (is_file("hub/package.json")) {
+            $data = json_decode(file_get_contents("hub/package.json"), true);
+            $source = $data["repository"]["url"] ?? $data["repository"] ?? null;
+
+            if ($source !== null) {
+                $found[] = ["hub", $source, $data["name"] ?? "hub"];
+            }
+        }
+
+        foreach ($found as [$prefix, $source, $name]) {
+            // Whatever form it is declared in — git+https://…git, https://…,
+            // with or without the suffix — is a URL to read. Push over SSH,
+            // because publishing is the one thing here that is not anonymous.
+            $repository = preg_replace(
+                ["#^git\+#", "#^https://github\.com/#", "#\.git$#"],
+                ["", "git@github.com:", ""],
+                $source
+            );
+
+            echo $prefix."\t".$repository.".git\t".$name."\n";
+        }
+    '
+}
+
+published=0
+skipped=0
+
+printf '\n'
+[ "$dry_run" = true ] && say "Dry run. Nothing will be pushed." && printf '\n'
+
+while IFS=$'\t' read -r prefix repository name; do
+    [ -z "$prefix" ] && continue
+
+    split="split/$(echo "$prefix" | tr '/' '-')"
+
+    git branch -D "$split" >/dev/null 2>&1 || true
+
+    # Quiet unless it goes wrong: subtree writes a progress meter and a
+    # "Created branch" line to stderr, which is a hundred lines of noise around
+    # the one line per package that anybody wants to read.
+    if ! noise="$(git subtree split --prefix="$prefix" -b "$split" 2>&1)"; then
+        printf '%s\n' "$noise" >&2
+        fail "Could not split $prefix."
+    fi
+
+    count="$(git rev-list --count "$split")"
+
+    if [ "$dry_run" = true ]; then
+        # --dry-run still talks to the remote, so this reports what the real
+        # push would do rather than what it is hoped it would do.
+        if git push --dry-run "$repository" "$split:$branch" >/dev/null 2>&1; then
+            say "would publish  $name  ($count commits) -> $repository"
+            published=$((published + 1))
+        else
+            say "WOULD REFUSE   $name  -> $repository"
+            say "               not a fast-forward; that repository holds something this one does not"
+            skipped=$((skipped + 1))
+        fi
+    elif git push --quiet "$repository" "$split:$branch" 2>/dev/null; then
+        say "published  $name  ($count commits) -> $repository"
+        published=$((published + 1))
+    else
+        say "REFUSED    $name  -> $repository"
+        say "           not a fast-forward; that repository holds something this one does not."
+        say "           Look at what is there before doing anything else. Do not force."
+        skipped=$((skipped + 1))
+    fi
+
+    git branch -D "$split" >/dev/null 2>&1 || true
+done < <(targets)
+
+printf '\n'
+if [ "$dry_run" = true ]; then
+    say "$published would be published, $skipped would be refused"
+else
+    say "$published published, $skipped refused"
+fi
+printf '\n'
+
+[ "$skipped" -gt 0 ] && exit 1
+exit 0

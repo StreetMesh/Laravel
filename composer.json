@@ -32,7 +32,7 @@
     "repositories": [
         {
             "type": "path",
-            "url": "../protocol",
+            "url": "packages/protocol",
             "options": {
                 "symlink": true
             }
@@ -73,6 +73,10 @@
     "scripts": {
         "lint": "pint",
         "lint:check": "pint --test",
+        "split": [
+            "Composer\\Config::disableProcessTimeout",
+            "bin/split"
+        ],
         "test": [
             "@lint:check",
             "@types:check",
