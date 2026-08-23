@@ -119,4 +119,43 @@ final class Comms
             ],
         ];
     }
+
+    /**
+     * The entry that arranges this widget, named the way the manifest names it.
+     *
+     * Vite keys an entry by where the file sits relative to the application
+     * root, and this package does not sit anywhere in particular:
+     * `vendor/streetmesh/laravel` once installed, `packages/laravel` in a path
+     * repository, a sibling directory while it is being worked on. Writing one
+     * of those into the view is exactly how this broke — the path was set down
+     * while the venue was its own package and went on pointing there after it
+     * stopped being one, so the widget rendered and the script that drives it
+     * never loaded.
+     *
+     * Symlinks are resolved on the directory and not the file, because
+     * `vite/streetmesh.js` resolves them the same way. A key that disagrees with
+     * the manifest is a page with no script and no error to say so.
+     */
+    public function hostEntry(): string
+    {
+        $package = realpath(dirname(__DIR__, 2)) ?: dirname(__DIR__, 2);
+
+        return $this->relativeToBase($package.'/resources/js/comms/host.js');
+    }
+
+    /**
+     * A path as the application root would write it, walking up where it has to.
+     */
+    private function relativeToBase(string $path): string
+    {
+        $root = explode('/', trim(realpath(base_path()) ?: base_path(), '/'));
+        $file = explode('/', trim($path, '/'));
+
+        while ($root !== [] && $file !== [] && $root[0] === $file[0]) {
+            array_shift($root);
+            array_shift($file);
+        }
+
+        return implode('/', array_merge(array_fill(0, count($root), '..'), $file));
+    }
 }
