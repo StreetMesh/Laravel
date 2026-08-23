@@ -1,6 +1,6 @@
 {
     "name": "streetmesh/protocol",
-    "description": "The StreetMesh protocol in framework-free PHP: identity, encoding, signing.",
+    "description": "The StreetMesh protocol in simple PHP.",
     "keywords": [
         "streetmesh",
         "atproto",
