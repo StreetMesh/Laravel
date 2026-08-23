@@ -1,11 +1,14 @@
 # StreetMesh Protocol for PHP
 
-The StreetMesh protocol in framework-free PHP: identity, encoding, signing.
+The StreetMesh protocol in simple PHP.
 
-> **Not on Packagist yet**, so `composer require streetmesh/protocol` will not
-> find it. Until it is published, get it from
-> [`Server`](https://github.com/StreetMesh/Server), which is also where it is
-> developed — this repository is published from there, at `packages/protocol`.
+```bash
+composer require streetmesh/protocol
+```
+
+> Developed in [`Laravel`](https://github.com/StreetMesh/Laravel), at
+> `packages/protocol`, and published here. Issues and pull requests belong
+> there.
 > Issues and pull requests belong there.
 
 Nothing here knows about a framework, a container, a configuration file, or a

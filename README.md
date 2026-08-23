@@ -1,12 +1,19 @@
-# StreetMesh Protocol for Laravel
+# StreetMesh for Laravel
 
-The StreetMesh protocol, bound to the framework.
+Turns a Laravel application into a StreetMesh server.
 
-> **Not on Packagist yet**, so `composer require streetmesh/protocol-laravel`
-> will not find it. Until it is published, get it from
-> [`Server`](https://github.com/StreetMesh/Server), which is also where it is
-> developed — this repository is published from there, at
-> `packages/protocol-laravel`. Issues and pull requests belong there.
+```bash
+composer require streetmesh/laravel
+```
+
+Or start from an application that already has it:
+
+```bash
+composer create-project streetmesh/server
+```
+
+which asks whether you are building somewhere people live, somewhere they
+gather, or both.
 
 The protocol itself lives in
 [`streetmesh/protocol`](https://github.com/StreetMesh/Protocol-PHP), which knows
