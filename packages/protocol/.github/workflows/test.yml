@@ -14,7 +14,7 @@ jobs:
       # of the protocol does this implement" stays an answerable question, and
       # so a change over there cannot silently turn this build red. Bumping this
       # is how the package adopts a protocol change, and deserves its own commit.
-      PROTOCOL_REF: d6badc8a2bc09a229d5418cec2d39a57d64cc568
+      PROTOCOL_REF: d1d66ace81f867956f8548623fafa4717738e0a9
 
     steps:
       - uses: actions/checkout@v4
