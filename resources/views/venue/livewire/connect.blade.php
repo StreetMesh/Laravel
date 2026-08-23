@@ -21,7 +21,7 @@ use StreetMesh\Server\Venue\Http\ConnectController;
  * avoid.
  *
  * Named rather than assumed. A package cannot draw its own chrome, and saying
- * which frame it wants is the contract — see the stub in tests/fixtures.
+ * which frame it wants is the contract — see the stub in tests/Fixtures.
  */
 new #[Layout('layouts::door')] #[Title('Connect')] class extends Component
 {
