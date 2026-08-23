@@ -291,5 +291,5 @@
         })
     </script>
 
-    @vite('packages/laravel-venue/resources/js/comms/host.js')
+    @vite($comms->hostEntry())
 @endif

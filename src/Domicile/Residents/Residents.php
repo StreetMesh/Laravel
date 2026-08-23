@@ -5,7 +5,6 @@ namespace StreetMesh\Server\Domicile\Residents;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use StreetMesh\Protocol\Plc;
 use StreetMesh\Protocol\PlcDirectory;
@@ -49,18 +48,17 @@ final readonly class Residents
         }
 
         /*
-         * One transaction, because a resident is an account *and* an identity.
-         * Either half alone is a person who cannot be dealt with: an account
-         * with no address cannot go anywhere, and an address with no owner is a
-         * name nobody can sign in as and claim.
+         * A resident is an account *and* an identity, and either half alone is
+         * somebody who cannot be dealt with — an account with no address cannot
+         * go anywhere, and an address with no owner is a name nobody can sign in
+         * as and claim. So the owner is handed over to be written down with the
+         * identity rather than attached to it afterwards.
+         *
+         * Not wrapped in a transaction here, the way `rename` is not: publishing
+         * to the directory is a network call, and holding the database open
+         * across one is what deadlocks a server that hosts its own.
          */
-        return DB::transaction(function () use ($user, $handle): array {
-            $settled = $this->identities->forResident((string) $handle);
-
-            $settled['identity']->owner()->associate($user)->save();
-
-            return $settled;
-        });
+        return $this->identities->forResident((string) $handle, $user);
     }
 
     /**

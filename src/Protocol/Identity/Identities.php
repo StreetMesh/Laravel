@@ -3,6 +3,7 @@
 namespace StreetMesh\Server\Protocol\Identity;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use StreetMesh\Protocol\Did;
 use StreetMesh\Protocol\Ed25519;
@@ -73,7 +74,7 @@ final class Identities
      *                                                            and is not
      *                                                            stored here
      */
-    public function forResident(string $handle): array
+    public function forResident(string $handle, ?Model $owner = null): array
     {
         if (Identity::query()->where('handle', $handle)->exists()) {
             throw new RuntimeException("[{$handle}] is already taken here.");
@@ -112,16 +113,39 @@ final class Identities
          */
         $this->directory->submit($did, $genesis);
 
-        $identity = Identity::create([
-            'did' => $did,
-            'handle' => $handle,
-            'signing_key' => $this->store($signing),
-            'signing_curve' => $signing->curve(),
+        /*
+         * Both rows together, and only now — the submit above is deliberately
+         * left outside. A server that hosts its own directory, which
+         * `STREETMESH_PLC_HOST` makes an ordinary thing to be, submits over HTTP
+         * to itself, and a transaction opened before that call is still holding
+         * the database when the request arrives. The request waits for the lock,
+         * the call waits for the request, and nothing breaks the tie but the
+         * HTTP timeout — which then reports a directory that refused, naming the
+         * one part of this that was working.
+         */
+        $identity = DB::transaction(function () use ($did, $handle, $signing, $ours, $owner): Identity {
+            $identity = Identity::create([
+                'did' => $did,
+                'handle' => $handle,
+                'signing_key' => $this->store($signing),
+                'signing_curve' => $signing->curve(),
 
-            // Ours, not theirs. Theirs is returned below and kept nowhere.
-            'rotation_key' => $this->store($ours),
-            'is_server' => false,
-        ]);
+                // Ours, not theirs. Theirs is returned below and kept nowhere.
+                'rotation_key' => $this->store($ours),
+                'is_server' => false,
+            ]);
+
+            /*
+             * An identity with nobody attached is a name that cannot be signed
+             * in as and claimed, so when there is somebody it goes down with the
+             * row rather than after it.
+             */
+            if ($owner !== null) {
+                $identity->owner()->associate($owner)->save();
+            }
+
+            return $identity;
+        });
 
         return ['identity' => $identity, 'rotationKey' => $theirs];
     }
