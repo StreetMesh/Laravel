@@ -113,13 +113,13 @@ abstract class TestCase extends Orchestra
          * into a view namespace *and* an anonymous component path, and only the
          * second makes `<x-pages::…>` resolve.
          */
-        $app['config']->set('livewire.component_namespaces.layouts', __DIR__.'/fixtures/views/layouts');
-        $app['config']->set('livewire.component_namespaces.pages', __DIR__.'/fixtures/views/pages');
+        $app['config']->set('livewire.component_namespaces.layouts', __DIR__.'/Fixtures/views/layouts');
+        $app['config']->set('livewire.component_namespaces.pages', __DIR__.'/Fixtures/views/pages');
 
         /* The settings heading is an ordinary include, so it wants a path. */
         $app['config']->set('view.paths', [
             ...(array) $app['config']->get('view.paths', []),
-            __DIR__.'/fixtures/views',
+            __DIR__.'/Fixtures/views',
         ]);
     }
 
