@@ -43,6 +43,13 @@ jobs:
           # refused — correctly, and confusingly.
           fetch-depth: 0
 
+          # Checkout otherwise leaves an `http.https://github.com/.extraheader`
+          # holding GITHUB_TOKEN, which is scoped to this repository. That header
+          # applies to every github.com request and takes precedence over
+          # credentials in a URL, so each push below reached the right repository
+          # carrying the wrong token and was refused. Every one of them.
+          persist-credentials: false
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'

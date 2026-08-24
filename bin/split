@@ -41,6 +41,18 @@ if [ "${1:-}" = "--dry-run" ]; then
 fi
 
 say() { printf '  %s\n' "$*"; }
+
+# What git actually said, rather than a guess at it. A push can fail because the
+# far end has moved on, and it can fail because the credentials cannot reach that
+# repository at all — those want opposite responses, and reporting the second as
+# the first sends whoever reads it to look in entirely the wrong place. It did
+# exactly that the first time this ran in CI.
+#
+# Credentials are stripped on the way out: a remote rewritten to https carries a
+# token in the URL, and this text goes to a log.
+explain() {
+    printf '%s\n' "$1" | sed -e 's#//[^@/]*@#//#g' -e 's/^/             /' >&2
+}
 fail() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
 
 # A split takes its content from HEAD, so anything uncommitted is invisible to
@@ -127,15 +139,15 @@ while IFS=$'\t' read -r prefix repository name; do
     if [ "$dry_run" = true ]; then
         # --dry-run still talks to the remote, so this reports what the real
         # push would do rather than what it is hoped it would do.
-        if git push --dry-run "$repository" "$split:$branch" >/dev/null 2>&1; then
+        if problem="$(git push --dry-run "$repository" "$split:$branch" 2>&1)"; then
             say "would publish  $name  ($count commits) -> $repository"
             published=$((published + 1))
         else
             say "WOULD REFUSE   $name  -> $repository"
-            say "               not a fast-forward; that repository holds something this one does not"
+            explain "$problem"
             skipped=$((skipped + 1))
         fi
-    elif git push --quiet "$repository" "$split:$branch" 2>/dev/null; then
+    elif problem="$(git push --quiet "$repository" "$split:$branch" 2>&1)"; then
         say "published  $name  ($count commits) -> $repository"
         published=$((published + 1))
 
@@ -153,7 +165,7 @@ while IFS=$'\t' read -r prefix repository name; do
         fi
     else
         say "REFUSED    $name  -> $repository"
-        say "           not a fast-forward; that repository holds something this one does not."
+        explain "$problem"
         say "           Look at what is there before doing anything else. Do not force."
         skipped=$((skipped + 1))
     fi
