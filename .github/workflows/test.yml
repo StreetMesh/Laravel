@@ -3,6 +3,7 @@ name: test
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -23,3 +24,44 @@ jobs:
       - run: composer lint:check
       - run: composer types:check
       - run: vendor/bin/phpunit
+
+  # Packages are developed here and installed from elsewhere, so anything that
+  # lands on main has to be pushed on to the repository Packagist and npm read.
+  # Doing it here rather than by hand is the difference between "published" and
+  # "published when somebody remembered".
+  split:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `git subtree split` rewrites a directory's whole history, so it needs
+          # the whole history. The default shallow clone produces a split with
+          # one commit in it, which is not a fast-forward at the far end and is
+          # refused — correctly, and confusingly.
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      # `bin/split` pushes over SSH, because publishing is the one thing it does
+      # that is not anonymous. A runner has no key, so the same URLs are sent
+      # over https with a token instead.
+      #
+      # GITHUB_TOKEN cannot do this: it is scoped to this repository, and every
+      # push here is to a different one. SPLIT_TOKEN is a token with contents
+      # write on the repositories named in `support.source`.
+      - name: Push over https instead of ssh
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.SPLIT_TOKEN }}@github.com/".insteadOf "git@github.com:"
+
+      - name: Publish each package
+        run: composer split
+        env:
+          # Set only for a tag build, so an ordinary merge publishes commits and
+          # a release publishes commits and the version that names them.
+          STREETMESH_SPLIT_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
