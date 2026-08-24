@@ -29,6 +29,12 @@ cd "$here"
 
 branch="${STREETMESH_SPLIT_BRANCH:-main}"
 
+# A tag to put on each package at the commit this publishes, so that
+# `streetmesh/protocol v0.1.1` and the tag in this repository mean the same
+# code. Composer resolves versions from tags in the package's own repository, so
+# a release here that never reached them is a version nobody can install.
+tag="${STREETMESH_SPLIT_TAG:-}"
+
 dry_run=false
 if [ "${1:-}" = "--dry-run" ]; then
     dry_run=true
@@ -132,6 +138,19 @@ while IFS=$'\t' read -r prefix repository name; do
     elif git push --quiet "$repository" "$split:$branch" 2>/dev/null; then
         say "published  $name  ($count commits) -> $repository"
         published=$((published + 1))
+
+        # Lightweight, and pointing at the split commit rather than at anything
+        # in this repository — the far end has never heard of the commits here.
+        # Not forced: a tag that already exists means that version was published
+        # once already, and republishing it under the same name is how somebody
+        # ends up with two different sets of bytes for one version.
+        if [ -n "$tag" ]; then
+            if git push --quiet "$repository" "$split:refs/tags/$tag" 2>/dev/null; then
+                say "           tagged $tag"
+            else
+                say "           COULD NOT TAG $tag — it may already be there. Left alone."
+            fi
+        fi
     else
         say "REFUSED    $name  -> $repository"
         say "           not a fast-forward; that repository holds something this one does not."
