@@ -26,7 +26,7 @@ class BuildHub extends Command
     public function handle(Experiences $experiences): int
     {
         $into = (string) ($this->option('into') ?: config('streetmesh.venue.build.into') ?: base_path('hub-build'));
-        $from = (string) (config('streetmesh.venue.build.hub') ?: self::library());
+        $from = (string) (config('streetmesh.venue.build.hub') ?: Build::library());
 
         $built = (new Build($experiences, $from, $into))->run();
 
@@ -64,8 +64,4 @@ class BuildHub extends Command
      * `STREETMESH_HUB_SOURCE` still overrides, for somebody working on the hub
      * itself against a server they already have running.
      */
-    private static function library(): string
-    {
-        return realpath(__DIR__.'/../../../hub') ?: __DIR__.'/../../../hub';
-    }
 }

@@ -30,7 +30,7 @@ class DeployHub extends Command
     public function handle(Experiences $experiences): int
     {
         $into = (string) (config('streetmesh.venue.build.into') ?: base_path('hub-build'));
-        $from = (string) (config('streetmesh.venue.build.hub') ?: base_path('hub'));
+        $from = (string) (config('streetmesh.venue.build.hub') ?: Build::library());
         $hub = (string) config('streetmesh.venue.hub');
         $application = (string) config('streetmesh.venue.deploy.application');
         $token = (string) config('streetmesh.venue.deploy.token');

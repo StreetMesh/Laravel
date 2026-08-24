@@ -45,6 +45,22 @@ final class Build
     ) {}
 
     /**
+     * The hub this package ships, which is the answer unless a server says
+     * otherwise.
+     *
+     * Lives here rather than on either command because both of them need it and
+     * they used to disagree: one had been moved to the package's own copy when
+     * the hub came in here, and the other still reached into the application's
+     * root for a directory that no longer exists there. Building worked, and
+     * deploying failed — on a server, at the end of a build, where the two are
+     * hardest to compare.
+     */
+    public static function library(): string
+    {
+        return realpath(__DIR__.'/../../../hub') ?: __DIR__.'/../../../hub';
+    }
+
+    /**
      * @return array{fingerprint: string, rooms: array<int, string>}
      */
     public function run(): array
