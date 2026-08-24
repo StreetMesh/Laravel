@@ -43,7 +43,7 @@
         },
         "streetmesh": {
             "components": "resources/js/alpine.js",
-            "views": "resources/views"
+            "views": "resources/views"{{ npmDependencies }}
         }
     },
     "config": {

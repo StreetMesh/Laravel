@@ -118,6 +118,19 @@ class MakeExperience extends Command
              */
             '{{ settlesInterface }}' => '',
             '{{ roomMethod }}' => $this->roomMethod($hasRoom),
+
+            /*
+             * The one dependency a package like this cannot install for itself.
+             * Anything with a live room reaches it over Colyseus from the
+             * browser, and Composer does not install Node packages — so it is
+             * declared here and the venue's own build refuses until it is
+             * present, rather than failing later on an unresolved import that
+             * names a file in `vendor/` and explains nothing.
+             *
+             * Left off entirely for an experience with no room. It imports
+             * nothing and should not be handed the question.
+             */
+            '{{ npmDependencies }}' => $hasRoom ? $this->npmDependencies() : '',
         ];
 
         $this->write($into, $replacements, $hasRoom);
@@ -197,6 +210,18 @@ class MakeExperience extends Command
     }
 
     /**
+     * What the venue has to install before this package's browser code runs.
+     *
+     * Written as a fragment rather than assembled with `json_encode`, because it
+     * lands inside a stub that is already JSON and has to keep that file's
+     * indentation. The leading comma continues the object above it.
+     */
+    private function npmDependencies(): string
+    {
+        return ",\n            \"npm\": {\n                \"colyseus.js\": \"^0.16\"\n            }";
+    }
+
+    /**
      * Where this experience's room lives, or that it has none.
      *
      * Null is an ordinary answer and worth saying so in the generated file — a
@@ -267,8 +292,11 @@ class MakeExperience extends Command
 
         if ($hasRoom) {
             note(
-                "Your room ships its own dependencies, but the *application* installs them —\n".
-                'add them to its `package.json` too, then `php artisan hub:build`.'
+                "Your room ships its own dependencies, and the *application* installs them —\n".
+                "add them to its `package.json`, then `php artisan hub:build`.\n\n".
+                "`colyseus.js` is declared for you under `extra.streetmesh.npm`, which is how\n".
+                "a venue's build knows to ask for it rather than failing on an unresolved\n".
+                'import. Anything else your browser code imports belongs there too.'
             );
         }
     }
