@@ -2,7 +2,8 @@
 
 namespace StreetMesh\Protocol;
 
-use RuntimeException;
+use StreetMesh\Protocol\Discovery\HandleDoesNotResolve;
+use StreetMesh\Protocol\Discovery\IdentityDisownsHandle;
 
 /**
  * The name a person actually types, and how it finds the identity behind it.
@@ -35,7 +36,7 @@ final class Handle
 
         return $this->fromWellKnown($handle)
             ?? $this->fromDns($handle)
-            ?? throw new RuntimeException("[{$handle}] does not resolve to an identity.");
+            ?? throw new HandleDoesNotResolve("[{$handle}] does not resolve to an identity.");
     }
 
     /**
@@ -51,7 +52,7 @@ final class Handle
         $claimed = $document($did)['alsoKnownAs'] ?? [];
 
         if (! in_array('at://'.$handle, $claimed, strict: true)) {
-            throw new RuntimeException(
+            throw new IdentityDisownsHandle(
                 "[{$handle}] points at [{$did}], but that identity does not answer to it."
             );
         }

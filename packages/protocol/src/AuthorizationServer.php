@@ -89,7 +89,7 @@ final class AuthorizationServer
          */
         if (rtrim((string) ($metadata['issuer'] ?? ''), '/') !== $origin) {
             throw new RuntimeException(
-                "[{$origin}] publishes metadata issued by [".($metadata['issuer'] ?? 'nobody')."]."
+                "[{$origin}] publishes metadata issued by [".($metadata['issuer'] ?? 'nobody').'].'
             );
         }
 

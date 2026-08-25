@@ -5,6 +5,9 @@ namespace StreetMesh\Server\Venue\Http;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use StreetMesh\Protocol\Discovery\HandleDoesNotResolve;
+use StreetMesh\Protocol\Discovery\IdentityDisownsHandle;
+use StreetMesh\Protocol\Discovery\IdentityDoesNotResolve;
 use StreetMesh\Server\Protocol\Permissions\Delegations;
 use StreetMesh\Server\Venue\Experiences\Experiences;
 use StreetMesh\Server\Venue\Visitors;
@@ -64,19 +67,64 @@ final class ConnectController
             );
         } catch (Throwable $failed) {
             /*
-             * Almost always a name that does not resolve, and almost always a
-             * typo. Said as a sentence about their address rather than as
-             * whatever the discovery chain threw, which names documents nobody
-             * outside this project has heard of.
+             * Said as a sentence about their address rather than as whatever the
+             * discovery chain threw, which names documents nobody outside this
+             * project has heard of — but *which* sentence matters, because these
+             * are four different situations and only one of them is the typo the
+             * old single message assumed.
              */
             report($failed);
 
             throw ValidationException::withMessages([
-                self::REFUSAL => __('Nothing at :handle answers as a StreetMesh address.', ['handle' => $handle]),
+                self::REFUSAL => $this->refusal($handle, $failed),
             ]);
         }
 
         return redirect()->away($begun['url']);
+    }
+
+    /**
+     * What to tell somebody the door would not open for.
+     *
+     * Four things arrive here and they used to leave as one sentence, which sent
+     * people looking for a typo in an address that was often perfectly correct.
+     * Matched on type rather than on message text: the sentences inside those
+     * exceptions are prose for a log, and making them load-bearing would mean
+     * rewording one could quietly change what a visitor is told.
+     *
+     * The disowned case is deliberately not softened. A name pointing at an
+     * identity that does not answer to it is a server claiming something untrue,
+     * and dressing that as a misspelling is how a check stops being one.
+     */
+    private function refusal(string $handle, Throwable $failed): string
+    {
+        return match (true) {
+            $failed instanceof HandleDoesNotResolve => __(
+                'Nothing at :handle answers as a StreetMesh address.',
+                ['handle' => $handle],
+            ),
+
+            $failed instanceof IdentityDisownsHandle => __(
+                'The server for :handle gave an identity that does not answer to that name, so this venue will not take it.',
+                ['handle' => $handle],
+            ),
+
+            $failed instanceof IdentityDoesNotResolve => __(
+                ':handle is a real address, but this venue cannot look up the identity behind it.',
+                ['handle' => $handle],
+            ),
+
+            /*
+             * Everything past discovery: a server that will not take a signature
+             * this one can make, a request it refused, a network that went away
+             * mid-handshake. Nothing the visitor can do about any of it, and
+             * telling them to check their spelling would be a lie.
+             */
+            default => __(
+                'Their server would not finish letting you in. Nothing is wrong with :handle — try again shortly.',
+                ['handle' => $handle],
+            ),
+        };
     }
 
     /**
