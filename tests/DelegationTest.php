@@ -457,4 +457,81 @@ class DelegationTest extends TestCase
 
         $this->assertStringContainsString('Nothing is wrong with alice.home.test', $said);
     }
+
+    // ── A free name is an offer, not a refusal ──────────────────────────────
+
+    /**
+     * A real domicile, with nobody at the name that was typed.
+     */
+    private function domicileWithNobodyHome(string $host = 'home.test'): void
+    {
+        $this->network->serve('https://'.$host.'/.well-known/did.json', [
+            'id' => 'did:web:'.$host,
+            'alsoKnownAs' => ['at://'.$host],
+            'service' => [[
+                'id' => '#atproto_pds',
+                'type' => 'AtprotoPersonalDataServer',
+                'serviceEndpoint' => 'https://'.$host,
+            ]],
+        ]);
+    }
+
+    public function test_a_free_name_at_a_real_domicile_is_offered_rather_than_refused(): void
+    {
+        $this->domicileWithNobodyHome();
+
+        $said = $this->refusalFor('nobody.home.test');
+
+        $this->assertStringContainsString('Nobody has nobody.home.test yet', $said);
+
+        // And the screen is handed somewhere to send them.
+        $this->assertSame(
+            ['handle' => 'nobody.home.test', 'domicile' => 'home.test', 'url' => 'https://home.test/register'],
+            session('connect.vacancy'),
+        );
+    }
+
+    /**
+     * The guard that keeps this from being a way to send people anywhere.
+     *
+     * The offer is built from a string somebody typed into a public form, so it
+     * is only ever made about a host that has answered for itself first and said
+     * it keeps repositories. A typo, a dead host, or somewhere that is simply not
+     * a StreetMesh server gets the ordinary sentence and no link at all.
+     */
+    public function test_a_name_at_somewhere_that_is_not_a_domicile_is_only_refused(): void
+    {
+        foreach (['nobody.nowhere.test', 'nobody.evil.example'] as $handle) {
+            session()->forget('connect.vacancy');
+
+            $said = $this->refusalFor($handle);
+
+            $this->assertStringContainsString('answers as a StreetMesh address', $said, $handle);
+            $this->assertNull(session('connect.vacancy'), $handle);
+        }
+    }
+
+    /**
+     * A venue is not somewhere people live, and does not claim to be.
+     *
+     * So a name at another venue produces no offer — nobody there is handing out
+     * addresses, and sending somebody to find out would waste the one moment
+     * they were willing to go and get one.
+     */
+    public function test_a_name_at_a_venue_is_not_offered(): void
+    {
+        $this->network->serve('https://games.example/.well-known/did.json', [
+            'id' => 'did:web:games.example',
+            'alsoKnownAs' => ['at://games.example'],
+            'service' => [[
+                'id' => '#streetmesh_venue',
+                'type' => 'StreetMeshVenue',
+                'serviceEndpoint' => 'https://games.example',
+            ]],
+        ]);
+
+        $this->refusalFor('nobody.games.example');
+
+        $this->assertNull(session('connect.vacancy'));
+    }
 }
