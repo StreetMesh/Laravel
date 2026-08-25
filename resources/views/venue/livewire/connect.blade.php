@@ -172,9 +172,34 @@ new #[Layout('layouts::door')] #[Title('Connect')] class extends Component
         </flux:field>
 
         @error(ConnectController::REFUSAL)
-            <flux:callout variant="danger" icon="exclamation-triangle">
-                <flux:callout.text>{{ $message }}</flux:callout.text>
-            </flux:callout>
+            @php($vacancy = session('connect.vacancy'))
+
+            {{--
+                A name nobody has taken is not a refusal, even though it arrives
+                as one. Somebody stood at this door and typed an address they
+                wanted — the only useful answer is to point at where they can
+                have it, rather than to tell them what did not happen.
+
+                Everything else that reaches here is a refusal and looks like
+                one.
+            --}}
+            @if ($vacancy)
+                <flux:callout variant="secondary" icon="sparkles">
+                    <flux:callout.heading>{{ $message }}</flux:callout.heading>
+                    <flux:callout.text>
+                        {{ __('That address is free at :domicile. Claim it there, then come back and sign in.', ['domicile' => $vacancy['domicile']]) }}
+                    </flux:callout.text>
+                    <x-slot name="actions">
+                        <flux:button :href="$vacancy['url']" size="sm">
+                            {{ __('Claim :handle', ['handle' => $vacancy['handle']]) }}
+                        </flux:button>
+                    </x-slot>
+                </flux:callout>
+            @else
+                <flux:callout variant="danger" icon="exclamation-triangle">
+                    <flux:callout.text>{{ $message }}</flux:callout.text>
+                </flux:callout>
+            @endif
         @enderror
 
         <flux:button type="submit" variant="primary" class="w-full" x-ref="go">

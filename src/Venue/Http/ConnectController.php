@@ -10,6 +10,7 @@ use StreetMesh\Protocol\Discovery\IdentityDisownsHandle;
 use StreetMesh\Protocol\Discovery\IdentityDoesNotResolve;
 use StreetMesh\Server\Protocol\Permissions\Delegations;
 use StreetMesh\Server\Venue\Experiences\Experiences;
+use StreetMesh\Server\Venue\Vacancy;
 use StreetMesh\Server\Venue\Visitors;
 use Throwable;
 
@@ -41,6 +42,7 @@ final class ConnectController
         private readonly Delegations $delegations,
         private readonly Visitors $visitors,
         private readonly Experiences $experiences,
+        private readonly Vacancy $vacancy,
     ) {}
 
     public function start(Request $request): RedirectResponse
@@ -99,10 +101,7 @@ final class ConnectController
     private function refusal(string $handle, Throwable $failed): string
     {
         return match (true) {
-            $failed instanceof HandleDoesNotResolve => __(
-                'Nothing at :handle answers as a StreetMesh address.',
-                ['handle' => $handle],
-            ),
+            $failed instanceof HandleDoesNotResolve => $this->unclaimed($handle),
 
             $failed instanceof IdentityDisownsHandle => __(
                 'The server for :handle gave an identity that does not answer to that name, so this venue will not take it.',
@@ -125,6 +124,42 @@ final class ConnectController
                 ['handle' => $handle],
             ),
         };
+    }
+
+    /**
+     * Nothing answers for that name — which may be the best news of the visit.
+     *
+     * Two things look identical from here: a misspelling, and a perfectly good
+     * name at a real domicile that nobody has taken. Only the second is worth
+     * saying anything else about, and it is worth saying a great deal about:
+     * somebody standing at a door trying to use an address is the one moment
+     * they are most willing to go and get one.
+     *
+     * The domicile is flashed rather than written into the sentence, so the
+     * screen can offer it as somewhere to go instead of a hostname to retype.
+     */
+    private function unclaimed(string $handle): string
+    {
+        $domicile = $this->vacancy->forHandle($handle);
+
+        if ($domicile === null) {
+            return __('Nothing at :handle answers as a StreetMesh address.', ['handle' => $handle]);
+        }
+
+        session()->flash('connect.vacancy', [
+            'handle' => $handle,
+            'domicile' => $domicile,
+
+            /*
+             * The same address the standing offer on this screen uses. It is a
+             * guess about somebody else's routes, and it was already being made
+             * for the configured domicile — this one is at least made about a
+             * host that has answered for itself first.
+             */
+            'url' => 'https://'.$domicile.'/register',
+        ]);
+
+        return __('Nobody has :handle yet.', ['handle' => $handle]);
     }
 
     /**
