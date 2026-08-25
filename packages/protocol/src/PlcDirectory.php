@@ -5,6 +5,7 @@ namespace StreetMesh\Protocol;
 use DateTimeInterface;
 use JsonException;
 use RuntimeException;
+use StreetMesh\Protocol\Discovery\IdentityDoesNotResolve;
 
 /**
  * Asking the directory what it holds for an identity.
@@ -55,7 +56,7 @@ final class PlcDirectory
      */
     public function resolve(string $did): array
     {
-        return $this->json($this->directory().'/'.$did, "[{$did}] did not resolve.");
+        return $this->json($this->directory().'/'.$did, "[{$did}] did not resolve.", IdentityDoesNotResolve::class);
     }
 
     /**
@@ -175,18 +176,19 @@ final class PlcDirectory
     }
 
     /**
+     * @param  class-string<RuntimeException>  $as  what a failure here means
      * @return array<array-key, mixed>
      */
-    private function json(string $url, string $complaint): array
+    private function json(string $url, string $complaint, string $as = RuntimeException::class): array
     {
-        $body = $this->network->get($url) ?? throw new RuntimeException($complaint);
+        $body = $this->network->get($url) ?? throw new $as($complaint);
 
         try {
             $decoded = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
-            throw new RuntimeException($complaint.' It did not answer with JSON.', previous: $e);
+            throw new $as($complaint.' It did not answer with JSON.', previous: $e);
         }
 
-        return is_array($decoded) ? $decoded : throw new RuntimeException($complaint);
+        return is_array($decoded) ? $decoded : throw new $as($complaint);
     }
 }

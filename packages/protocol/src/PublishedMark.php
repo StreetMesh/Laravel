@@ -41,7 +41,7 @@ final class PublishedMark
      * the wire, and the one thing it must never do is send somebody's browser
      * to an address a stranger chose.
      *
-     * @return array{light: string, dark: string}|null  null when there is no host to ask
+     * @return array{light: string, dark: string}|null null when there is no host to ask
      */
     public static function at(?string $host): ?array
     {

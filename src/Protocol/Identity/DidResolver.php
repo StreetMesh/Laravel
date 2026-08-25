@@ -6,6 +6,7 @@ use DateTimeInterface;
 use JsonException;
 use RuntimeException;
 use StreetMesh\Protocol\Did;
+use StreetMesh\Protocol\Discovery\IdentityDoesNotResolve;
 use StreetMesh\Protocol\Network;
 use StreetMesh\Protocol\Plc;
 use StreetMesh\Protocol\PlcDirectory;
@@ -96,7 +97,7 @@ final class DidResolver
      */
     private function fetchDocument(string $url, string $did): array
     {
-        $body = $this->network->get($url) ?? throw new RuntimeException("[{$did}] did not resolve.");
+        $body = $this->network->get($url) ?? throw new IdentityDoesNotResolve("[{$did}] did not resolve.");
 
         try {
             $document = json_decode($body, true, flags: JSON_THROW_ON_ERROR);

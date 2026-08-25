@@ -2,7 +2,10 @@
 
 namespace StreetMesh\Server\Tests;
 
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\ViewErrorBag;
+use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use StreetMesh\Protocol\Network;
 use StreetMesh\Protocol\P256;
@@ -11,6 +14,7 @@ use StreetMesh\Server\Protocol\Attestations\Attestations;
 use StreetMesh\Server\Protocol\Identity\Identities;
 use StreetMesh\Server\Protocol\Permissions\Delegation;
 use StreetMesh\Server\Protocol\Permissions\Delegations;
+use StreetMesh\Server\Venue\Http\ConnectController;
 
 /**
  * The venue's half: asking a server nobody here has heard of, and spending what
@@ -353,5 +357,104 @@ class DelegationTest extends TestCase
         ]);
 
         return $this->delegations()->complete((string) $delegation->state, 'a-code', 'https://games.test/connect/callback');
+    }
+    // ── Four ways the door does not open ────────────────────────────────────
+
+    /**
+     * @return TestResponse<Response>
+     */
+    private function knock(string $handle)
+    {
+        return $this->from(route('venue.connect'))
+            ->post(route('venue.connect.start'), ['handle' => $handle]);
+    }
+
+    private function refusalFor(string $handle): string
+    {
+        $this->knock($handle)->assertRedirect();
+
+        $errors = session('errors');
+
+        return $errors instanceof ViewErrorBag
+            ? (string) $errors->getBag('default')->first(ConnectController::REFUSAL)
+            : '';
+    }
+
+    /**
+     * The four cases used to leave here as one sentence about a typo.
+     *
+     * Three of them are not typos, and one of them is not even a problem with
+     * the address — so somebody was sent to check their spelling while the
+     * spelling was fine. Each is now told what actually happened.
+     */
+    public function test_a_name_that_answers_nowhere_is_told_so(): void
+    {
+        $this->assertStringContainsString(
+            'Nothing at nobody.home.test answers',
+            $this->refusalFor('nobody.home.test'),
+        );
+    }
+
+    public function test_an_identity_that_disowns_the_name_is_not_dressed_as_a_typo(): void
+    {
+        // Resolves, and the document it points at answers to somebody else.
+        $this->network
+            ->serve('https://impostor.home.test/.well-known/atproto-did', 'did:web:alice.home.test')
+            ->serve('https://impostor.home.test/.well-known/did.json', [
+                'id' => 'did:web:alice.home.test',
+                'alsoKnownAs' => ['at://alice.home.test'],
+            ]);
+
+        $said = $this->refusalFor('impostor.home.test');
+
+        $this->assertStringContainsString('does not answer to that name', $said);
+
+        /*
+         * The point of the test. This is a server claiming an identity that
+         * disowns the claim, and telling somebody to check their spelling would
+         * quietly turn the bidirectional check into decoration.
+         */
+        $this->assertStringNotContainsString('Nothing at', $said);
+    }
+
+    /**
+     * A real address this venue's directory has never heard of.
+     *
+     * Constant in development, where a venue on a local directory is handed a
+     * production handle. The address, the spelling and the person are all fine.
+     */
+    public function test_an_identity_that_cannot_be_looked_up_says_the_address_is_real(): void
+    {
+        $this->network->serve('https://elsewhere.home.test/.well-known/atproto-did', 'did:plc:unknowntoallofus');
+
+        $said = $this->refusalFor('elsewhere.home.test');
+
+        $this->assertStringContainsString('is a real address', $said);
+        $this->assertStringContainsString('cannot look up the identity', $said);
+    }
+
+    /**
+     * Discovery worked and the handshake did not.
+     *
+     * Nothing the visitor can do, and nothing wrong with what they typed, so
+     * the one thing not to say is anything about their address.
+     */
+    public function test_a_server_that_will_not_finish_says_it_is_not_the_address(): void
+    {
+        $this->network->serve(self::THEIR_SERVER.'/.well-known/oauth-authorization-server', [
+            'issuer' => self::THEIR_SERVER,
+            'pushed_authorization_request_endpoint' => self::THEIR_SERVER.'/oauth/par',
+            'authorization_endpoint' => self::THEIR_SERVER.'/oauth/authorize',
+            'token_endpoint' => self::THEIR_SERVER.'/oauth/token',
+            'require_pushed_authorization_requests' => true,
+            'client_id_metadata_document_supported' => true,
+
+            // Nothing this server can sign with.
+            'dpop_signing_alg_values_supported' => ['RS256'],
+        ]);
+
+        $said = $this->refusalFor('alice.home.test');
+
+        $this->assertStringContainsString('Nothing is wrong with alice.home.test', $said);
     }
 }
