@@ -295,4 +295,68 @@ class IdentityTest extends TestCase
         $this->get('/.well-known/did.json')->assertOk();
         $this->get('/.well-known/atproto-did')->assertOk();
     }
+
+    // ── A name nobody holds ─────────────────────────────────────────────────
+
+    /**
+     * The distinction this whole endpoint turns on.
+     *
+     * `nobody.games.test` is a name shaped like a resident's that nobody has
+     * taken. It used to resolve to *this server's* DID, because anything
+     * unrecognised fell through to the server — and then the document, which
+     * says it is called `games.test`, disowned the name. Resolution succeeded
+     * and the bidirectional check failed.
+     *
+     * Which put an available address and a domicile claiming an identity that
+     * disowns a name into the same error. The first is an opportunity, the
+     * second is a server lying, and a venue could not tell them apart. See
+     * StreetMesh/Protocol#1.
+     */
+    public function test_a_name_nobody_holds_resolves_to_nobody(): void
+    {
+        $this->identities()->forServer();
+
+        $this->get('https://nobody.games.test/.well-known/atproto-did')->assertNotFound();
+        $this->get('https://nobody.games.test/.well-known/did.json')->assertNotFound();
+    }
+
+    public function test_a_name_somebody_holds_still_resolves_to_them(): void
+    {
+        ['identity' => $alice] = $this->identities()->forResident('alice.games.test');
+
+        $answer = $this->get('https://alice.games.test/.well-known/atproto-did');
+
+        $answer->assertOk();
+        $this->assertSame($alice->did, trim($answer->getContent()));
+    }
+
+    public function test_this_servers_own_name_is_not_a_name_nobody_holds(): void
+    {
+        $server = $this->identities()->forServer();
+
+        $answer = $this->get('https://games.test/.well-known/atproto-did');
+
+        $answer->assertOk();
+        $this->assertSame($server->did, trim($answer->getContent()));
+    }
+
+    /**
+     * A stranger's hostname is still this server being asked about itself.
+     *
+     * `localhost`, an IP, a preview URL, a name somebody else pointed here —
+     * none of those is a name this server is responsible for having or not
+     * having, so none of them is nobody. Narrowing the 404 to names *under*
+     * this server's own is what keeps that true.
+     */
+    public function test_a_hostname_from_outside_still_answers_for_the_server(): void
+    {
+        $server = $this->identities()->forServer();
+
+        foreach (['localhost', '127.0.0.1', 'games.test.someone-else.example'] as $host) {
+            $answer = $this->get('https://'.$host.'/.well-known/atproto-did');
+
+            $answer->assertOk();
+            $this->assertSame($server->did, trim($answer->getContent()), $host);
+        }
+    }
 }
