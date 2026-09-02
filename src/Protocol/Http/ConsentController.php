@@ -7,6 +7,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use RuntimeException;
+use StreetMesh\Protocol\BlobScope;
+use StreetMesh\Protocol\Glb;
 use StreetMesh\Protocol\Scope;
 use StreetMesh\Server\Protocol\Identity\Identities;
 use StreetMesh\Server\Protocol\Permissions\Permissions;
@@ -137,6 +139,11 @@ final class ConsentController
      * records, and a friendly paraphrase they never see again would not help
      * them do that.
      *
+     * Two passes, because a token carries two kinds of permission and each half
+     * of the grammar declines to read the other's. A scope that describes
+     * neither -- `atproto` -- contributes nothing to either pass, which is
+     * correct: it grants no access to anything a person would want warning of.
+     *
      * @param  array<int, string>  $scopes
      * @return array<int, string>
      */
@@ -148,7 +155,6 @@ final class ConsentController
             $repo = Scope::parse($scope);
 
             if ($repo === null) {
-                // `atproto` and anything else that grants no access to records.
                 continue;
             }
 
@@ -161,7 +167,51 @@ final class ConsentController
                 : __('Add, change and remove :what in your records', ['what' => $what]);
         }
 
+        foreach ($scopes as $scope) {
+            $blob = BlobScope::parse($scope);
+
+            if ($blob === null) {
+                continue;
+            }
+
+            /*
+             * Media types rather than record names, and shown as plainly as the
+             * record types above are shown literally -- but the reasoning is
+             * the other way round. Nobody is going to recognize
+             * `model/gltf-binary` again later in their own records, because a
+             * blob is not something they browse. What they need to understand
+             * is what sort of thing a venue is about to keep for them, and
+             * "pictures and models" is that.
+             */
+            $sentences[] = __('Keep :what in your files', [
+                /*
+                 * Unique, because two types can say the same word. A venue
+                 * asking for PNGs and JPEGs is asking to keep pictures, and
+                 * "pictures and pictures" reads as a bug in the screen rather
+                 * than as a permission.
+                 */
+                'what' => implode(__(' and '), array_unique(array_map($this->plainly(...), $blob->accepts))),
+            ]);
+        }
+
         return $sentences === [] ? [__('Confirm who you are, and nothing else')] : $sentences;
+    }
+
+    /**
+     * A media type, as a person would say it.
+     *
+     * Falls back to the type itself rather than to a vague word, because a
+     * sentence saying a venue may keep "files" is a sentence that has told
+     * somebody nothing. An unfamiliar type is better read as itself.
+     */
+    private function plainly(string $mime): string
+    {
+        return match (true) {
+            $mime === BlobScope::ANY => __('anything at all'),
+            str_starts_with($mime, 'image/') => __('pictures'),
+            $mime === Glb::MIME => __('models'),
+            default => $mime,
+        };
     }
 
     /**

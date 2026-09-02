@@ -83,6 +83,33 @@ class AvatarTest extends TestCase
         return $bytes;
     }
 
+    /**
+     * A model, built by hand rather than exported.
+     *
+     * Small enough to read: a glTF binary is a twelve byte header and then
+     * chunks, and everything this server checks about one is in the first two.
+     * Building it here rather than committing a fixture keeps the malformed
+     * cases below one argument away from the good one.
+     *
+     * @param  array<int, string>  $extensions
+     */
+    private function body(array $extensions = ['VRMC_vrm'], bool $truthful = true): string
+    {
+        $json = json_encode([
+            'asset' => ['version' => '2.0'],
+            'extensionsUsed' => $extensions,
+        ]);
+
+        // Chunks are four byte aligned, and the JSON one pads with spaces.
+        $json = str_pad((string) $json, (int) (ceil(strlen((string) $json) / 4) * 4), ' ');
+
+        $chunk = pack('VV', strlen($json), 0x4E4F534A).$json;
+        $length = 12 + strlen($chunk);
+
+        // A file that lies about its own length is the shape truncation takes.
+        return 'glTF'.pack('VV', 2, $truthful ? $length : $length + 64).$chunk;
+    }
+
     // ── What gets stored ────────────────────────────────────────────────────
 
     /**
@@ -136,7 +163,7 @@ class AvatarTest extends TestCase
     {
         $alice = $this->alice();
 
-        $avatar = $this->avatars()->adopt($alice, $this->uploaded(), 'Weekday');
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded(), name: 'Weekday');
 
         $record = Record::query()->where('did', $alice->did)->where('rkey', $avatar->rkey)->first();
 
@@ -165,8 +192,8 @@ class AvatarTest extends TestCase
     {
         $alice = $this->alice();
 
-        $first = $this->avatars()->adopt($alice, $this->uploaded(120, 60), 'Weekday');
-        $second = $this->avatars()->adopt($alice, $this->uploaded(90, 90), 'Weekend');
+        $first = $this->avatars()->adopt($alice, $this->uploaded(120, 60), name: 'Weekday');
+        $second = $this->avatars()->adopt($alice, $this->uploaded(90, 90), name: 'Weekend');
 
         $this->assertCount(2, $this->avatars()->history((string) $alice->did));
 
@@ -438,15 +465,90 @@ class AvatarTest extends TestCase
     }
 
     /**
-     * The model is reserved, not aliased.
-     *
-     * Answering the icon here would make this server assert that a picture is
-     * somebody's model, which is the confusion two paths exist to prevent.
+     * A body, at the address a spatial place fetches.
      */
-    public function test_the_model_is_reserved_and_says_so(): void
+    public function test_a_residents_own_hostname_serves_their_body(): void
+    {
+        $alice = $this->alice();
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded(), $this->body());
+
+        $this->askHost('alice.home.test', '/avatar')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'model/gltf-binary')
+            ->assertHeader('ETag', '"'.$avatar->model_cid.'"')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        $this->assertNotNull($avatar->model_cid);
+    }
+
+    /**
+     * The model has no letter, and must not borrow the icon's.
+     *
+     * A drawn initial is a real answer to what somebody looks like. There is no
+     * equivalent answer to what body to put them in, and inventing one would
+     * have every spatial place agreeing on a default nobody chose — so a
+     * resident who has not built one is answered with nothing.
+     */
+    public function test_a_resident_with_no_body_is_answered_with_nothing(): void
     {
         $this->avatars()->adopt($this->alice(), $this->uploaded());
 
         $this->askHost('alice.home.test', '/avatar')->assertNotFound();
+        $this->askHost('alice.home.test')->assertOk();
+    }
+
+    /**
+     * Readable from anywhere, which is the whole point of publishing it here.
+     *
+     * A browser draws a cross-origin picture without asking. It will not hand a
+     * cross-origin model to whatever is going to render it, so without this the
+     * body at somebody's own address would be readable only by the server that
+     * already has it.
+     */
+    public function test_a_face_and_a_body_are_readable_from_anywhere(): void
+    {
+        $this->avatars()->adopt($this->alice(), $this->uploaded(), $this->body());
+
+        $this->askHost('alice.home.test')->assertHeader('Access-Control-Allow-Origin', '*');
+        $this->askHost('alice.home.test', '/avatar')->assertHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    // ── What is refused ─────────────────────────────────────────────────────
+
+    /**
+     * A model, but not a body.
+     *
+     * `/avatar` is what a place fetches to put somebody in a body, so a model
+     * with no humanoid rig is not a smaller version of the right answer. Every
+     * caller would otherwise have to discover that for itself.
+     */
+    public function test_a_model_that_is_not_an_avatar_is_refused(): void
+    {
+        $this->expectExceptionMessage('does not carry VRMC_vrm');
+
+        $this->avatars()->adopt($this->alice(), $this->uploaded(), $this->body(extensions: []));
+    }
+
+    /**
+     * A file that disagrees with itself.
+     *
+     * The shape both truncation and padding take, and the reason the header's
+     * declared length is checked against the length it actually has.
+     */
+    public function test_a_model_that_lies_about_its_length_is_refused(): void
+    {
+        $this->expectExceptionMessage('bytes and it is');
+
+        $this->avatars()->adopt($this->alice(), $this->uploaded(), $this->body(truthful: false));
+    }
+
+    /**
+     * Bytes that are not a model at all.
+     */
+    public function test_something_that_is_not_a_model_is_refused(): void
+    {
+        $this->expectExceptionMessage('not a glTF binary');
+
+        $this->avatars()->adopt($this->alice(), $this->uploaded(), $this->uploaded());
     }
 }

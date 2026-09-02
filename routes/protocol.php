@@ -79,13 +79,27 @@ Route::middleware('streetmesh')->group(function (): void {
      *
      * Read-only and unauthenticated, which is safe only because a blob carries
      * the visibility of whatever it was kept for: this serves what this server
-     * publishes and nothing else. There is deliberately no upload endpoint
-     * beside it — writing a blob from somewhere else needs a `blob:` scope,
-     * and `Scope::parse` does not read one yet, so the permission would be
-     * unenforceable here and invisible on the consent screen.
+     * publishes and nothing else.
      */
     Route::get('xrpc/com.atproto.sync.getBlob', [BlobController::class, 'get'])
         ->name('streetmesh.blob.get');
+
+    /*
+     * And putting them there in the first place.
+     *
+     * There was deliberately no upload endpoint here for as long as `blob:` was
+     * a scope nothing parsed: the permission would have been unenforceable at
+     * this route and invisible on the consent screen, which is a permission
+     * granted by nobody. The three arrived together — `BlobScope` reads one,
+     * `ConsentController` says what it means in a sentence, and this refuses
+     * bytes it does not cover.
+     *
+     * Authenticated where its neighbour is not, and the asymmetry is the point:
+     * reading a blob asks what this server publishes, and writing one asks what
+     * a resident agreed to.
+     */
+    Route::post('xrpc/com.atproto.repo.uploadBlob', [BlobController::class, 'upload'])
+        ->name('streetmesh.blob.upload');
 
     /*
      * A PLC directory, when this server keeps one.

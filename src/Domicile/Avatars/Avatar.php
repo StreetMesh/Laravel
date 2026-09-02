@@ -44,4 +44,19 @@ class Avatar extends Model
     {
         return app(BlobStore::class)->get($this->did, $this->icon_cid);
     }
+
+    /**
+     * The body, or null -- which means either that nobody has built one or
+     * that this server has lost it.
+     *
+     * The two are not distinguished on purpose. To whoever asked they are the
+     * same answer, and a caller that had to tell them apart would be a caller
+     * doing something about a difference it cannot act on.
+     */
+    public function model(): ?Blob
+    {
+        return $this->model_cid === null
+            ? null
+            : app(BlobStore::class)->get($this->did, $this->model_cid);
+    }
 }

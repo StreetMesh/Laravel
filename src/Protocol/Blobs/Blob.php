@@ -67,4 +67,27 @@ class Blob extends Model
     {
         return 'streetmesh/blobs/'.sha1($this->did).'/'.$this->cid;
     }
+
+    /**
+     * How a record refers to these bytes.
+     *
+     * ATProtocol's shape rather than a bare string of ours, so that software
+     * which already knows how to follow one of these can -- a record only
+     * somebody here can read is a record that has not left.
+     *
+     * Here rather than in each of the places that writes one, because it is a
+     * wire format: a second, subtly different copy would be a second dialect,
+     * and whoever is reading would only discover it in the field.
+     *
+     * @return array<string, mixed>
+     */
+    public function reference(): array
+    {
+        return [
+            '$type' => 'blob',
+            'ref' => ['$link' => $this->cid],
+            'mimeType' => $this->mime,
+            'size' => $this->size,
+        ];
+    }
 }

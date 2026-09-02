@@ -2,6 +2,7 @@
 
 namespace StreetMesh\Server\Protocol\Permissions;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -206,6 +207,48 @@ final class Delegations
     }
 
     /**
+     * Put bytes in somebody's repository, on their behalf.
+     *
+     * The half that had to exist before an experience could write a record
+     * referring to anything -- a face, a body, a photograph. `write` sends a
+     * structure and this sends a file, and they are separate calls rather than
+     * one because the repository keeps them apart: a record is queried,
+     * versioned and exported as JSON, and none of those are things worth doing
+     * to a model.
+     *
+     * The collection travels with the bytes because a blob's visibility is
+     * looked up from what it was kept for. Bytes with no collection would have
+     * no answer to who may read them.
+     *
+     * @return array<string, mixed> the reference to put in the record
+     */
+    public function upload(Delegation $delegation, string $bytes, string $collection): array
+    {
+        if (! $delegation->permits($collection)) {
+            throw new RuntimeException("That visitor did not agree to records of type [{$collection}].");
+        }
+
+        $delegation = $this->live($delegation);
+
+        $answer = $this->sendBytes(
+            $delegation->issuer.'/xrpc/com.atproto.repo.uploadBlob?collection='.rawurlencode($collection),
+            $bytes,
+            $delegation->key(),
+            token: (string) $delegation->access_token,
+        );
+
+        $reference = $answer->json('blob');
+
+        if (! is_array($reference) || ! is_string($reference['ref']['$link'] ?? null)) {
+            throw new RuntimeException(
+                'Those bytes were not accepted: '.(string) $answer->json('message', $answer->body())
+            );
+        }
+
+        return $reference;
+    }
+
+    /**
      * One request, retried once if the server hands back a new nonce.
      *
      * Nonces rotate every few minutes, so being told to use a new one is an
@@ -218,14 +261,49 @@ final class Delegations
      */
     private function send(string $url, array $body, P256 $key, ?string $token = null): Response
     {
+        return $this->proving(
+            $url,
+            $key,
+            $token,
+            fn (PendingRequest $request): Response => $request
+                ->{$token === null ? 'asForm' : 'asJson'}()
+                ->post($url, $body),
+        );
+    }
+
+    /**
+     * The same conversation, carrying bytes rather than a structure.
+     *
+     * Announced as `application/octet-stream` because that is the honest thing
+     * to say: the server decides what these are by looking at them and reads
+     * nothing a caller claims about them, so naming a type here would be
+     * describing a decision that is not ours to make.
+     */
+    private function sendBytes(string $url, string $bytes, P256 $key, string $token): Response
+    {
+        return $this->proving(
+            $url,
+            $key,
+            $token,
+            fn (PendingRequest $request): Response => $request
+                ->withBody($bytes, 'application/octet-stream')
+                ->post($url),
+        );
+    }
+
+    /**
+     * The proof, and the one retry.
+     *
+     * @param  callable(PendingRequest): Response  $post
+     */
+    private function proving(string $url, P256 $key, ?string $token, callable $post): Response
+    {
         $nonce = $this->nonceFor($url);
 
-        $attempt = fn (?string $with): Response => Http::withHeaders(array_filter([
+        $attempt = fn (?string $with): Response => $post(Http::withHeaders(array_filter([
             'DPoP' => Dpop::proof($key, 'POST', $url, nonce: $with, accessToken: $token),
             'Authorization' => $token === null ? null : 'DPoP '.$token,
-        ]))->acceptJson()
-            ->{$token === null ? 'asForm' : 'asJson'}()
-            ->post($url, $body);
+        ]))->acceptJson());
 
         $answer = $attempt($nonce);
         $offered = Dpop::nonceFrom($answer->headers());

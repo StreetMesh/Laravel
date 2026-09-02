@@ -71,7 +71,7 @@ final class Scope
             return null;
         }
 
-        $parameters = self::query($query);
+        $parameters = ScopeQuery::parse($query);
 
         $collections = $positional !== null && $positional !== ''
             ? [$positional]
@@ -82,34 +82,6 @@ final class Scope
         }
 
         return self::forRepo($collections, $parameters['action'] ?? []);
-    }
-
-    /**
-     * Repeated keys, kept.
-     *
-     * Not `parse_str`, which is built for HTML forms and keeps only the last of
-     * `action=create&action=delete` unless the name ends in `[]`. This grammar
-     * repeats keys deliberately and means all of them, so using PHP's parser
-     * here silently narrows a permission — which is the safe direction to fail,
-     * and still wrong.
-     *
-     * @return array<string, array<int, string>>
-     */
-    private static function query(string $query): array
-    {
-        $parameters = [];
-
-        foreach (explode('&', $query) as $pair) {
-            if ($pair === '') {
-                continue;
-            }
-
-            [$name, $value] = array_pad(explode('=', $pair, 2), 2, '');
-
-            $parameters[rawurldecode($name)][] = rawurldecode($value);
-        }
-
-        return $parameters;
     }
 
     /**

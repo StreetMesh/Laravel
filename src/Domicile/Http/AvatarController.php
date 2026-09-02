@@ -75,8 +75,8 @@ class AvatarController
             return $this->letterFor((string) $resident->handle, $request);
         }
 
-        /* The tag is the picture's own name. See `picture` for the clock. */
-        $answer = $this->picture($bytes, $blob->mime);
+        /* The tag is the picture's own name. See `served` for the clock. */
+        $answer = $this->served($bytes, $blob->mime);
 
         $answer->setEtag($blob->cid);
         $answer->isNotModified($request);
@@ -85,16 +85,38 @@ class AvatarController
     }
 
     /**
-     * Reserved, and answering honestly until there is something to serve.
+     * The 3D one: the body a spatial place puts somebody in.
      *
-     * `/avatar` is the model — the thing a spatial place puts on a body. It is
-     * unbuilt, and a route that redirected to the icon instead would be this
-     * server claiming a picture is a person's model, which is the confusion the
-     * two paths exist to avoid.
+     * The same shape as `icon` and deliberately not the same behaviour in one
+     * place — there is no letter to fall back to. A drawn initial is a real
+     * answer to "what does this person look like"; there is no equivalent
+     * answer to "what body should I put them in", and inventing one would have
+     * every spatial place quietly agreeing on a default nobody chose. So a
+     * resident who has not built one is answered with nothing, and the caller
+     * decides what to do about it.
      */
-    public function model(): Response
+    public function model(Request $request): Response
     {
-        return $this->nobody();
+        $resident = $this->identities->byHandle($request->getHost());
+
+        if ($resident === null || $resident->is_server) {
+            return $this->nobody();
+        }
+
+        $avatar = $this->avatars->defaultFor((string) $resident->did);
+        $blob = $avatar?->model();
+        $bytes = $blob === null ? null : $this->blobs->bytes($blob);
+
+        if ($bytes === null) {
+            return $this->nobody();
+        }
+
+        $answer = $this->served($bytes, $blob->mime);
+
+        $answer->setEtag($blob->cid);
+        $answer->isNotModified($request);
+
+        return $answer;
     }
 
     /**
@@ -115,7 +137,7 @@ class AvatarController
     {
         $letter = Letter::for($handle);
 
-        $answer = $this->picture($letter->bytes, 'image/svg+xml');
+        $answer = $this->served($letter->bytes, 'image/svg+xml');
 
         $answer->setEtag($letter->etag);
         $answer->isNotModified($request);
@@ -126,10 +148,11 @@ class AvatarController
     /**
      * Nothing, and nothing about why.
      *
-     * One answer for "nobody goes by that name here" and "that is this server's
-     * own name, which is not a person". Reached for no other reason: a resident
-     * who exists is always answered for, so a 404 here means the name is not
-     * one this server knows.
+     * One answer for "nobody goes by that name here", "that is this server's
+     * own name, which is not a person", and — for the model alone — "that
+     * person has not built one". A resident who exists is always answered for
+     * with a picture, so a 404 from `icon` means the name is not one this
+     * server knows; a 404 from `model` most often means there is no body yet.
      */
     private function nobody(): Response
     {
@@ -137,17 +160,40 @@ class AvatarController
     }
 
     /**
-     * The headers every picture here carries, whichever kind it is.
+     * The headers everything here carries, whichever kind it is.
      *
-     * Both of these matter more than they look, and more for the letter than
-     * for the photograph: SVG is a document format, and these bytes come back
-     * from the origin that also answers for somebody's identity. A browser must
-     * not be talked into rendering one as a page.
+     * A picture, a letter, a body: one set of headers, because a second subtly
+     * different answer to "may a browser run this" is how the two drift.
+     *
+     * They matter more than they look, and most of all for the letter: SVG is a
+     * document format, and these bytes come back from the origin that also
+     * answers for somebody's identity. A browser must not be talked into
+     * rendering one as a page.
      */
-    private function picture(string $bytes, string $type): Response
+    private function served(string $bytes, string $type): Response
     {
         return response($bytes, 200, [
             'Content-Type' => $type,
+
+            /*
+             * Readable from anywhere, because being readable from anywhere is
+             * the entire point of publishing it here.
+             *
+             * An `<img>` never needed this, which is why nothing did until
+             * now: a browser will draw a cross-origin picture without asking
+             * permission. A model is not drawn by the browser — it is fetched
+             * by whatever is going to render it, and a fetch from another
+             * origin is refused without this header. Without it the body at a
+             * resident's own address would be readable only by the server that
+             * already has it.
+             *
+             * Safe to say for both, and said for both rather than only for the
+             * model, because two answers to "who may read this" is how the two
+             * drift. Nothing here is secret — the visibility question was
+             * settled when the bytes were stored, and private bytes are not
+             * reached by this controller at all.
+             */
+            'Access-Control-Allow-Origin' => '*',
 
             /*
              * Asked for every time, and almost never sent.
