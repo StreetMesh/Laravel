@@ -7,6 +7,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use StreetMesh\Protocol\Cid;
+use StreetMesh\Protocol\Glb;
 use StreetMesh\Server\Protocol\Records\Collections;
 
 /**
@@ -70,7 +71,7 @@ final class BlobStore
          */
         $visibility = $this->collections->visibilityOf($collection);
 
-        $mime = $this->sniff($bytes);
+        $mime = $this->identify($bytes);
         $ceiling = $this->allowed()[$mime] ?? null;
 
         if ($ceiling === null) {
@@ -161,13 +162,46 @@ final class BlobStore
     }
 
     /**
+     * Does this server already hold these bytes for this subject?
+     *
+     * Asked by the record endpoint before it writes a record that refers to
+     * them. A record naming a blob nobody holds is a permalink to nothing, and
+     * the reference cannot be checked later: `$link` is a name, and a name is
+     * satisfied by whatever happens to be at it.
+     */
+    public function holds(string $did, string $cid): bool
+    {
+        return Blob::query()->where('did', $did)->where('cid', $cid)->exists();
+    }
+
+    /**
      * What these bytes actually are.
+     *
+     * Public because permission is decided by type, and the endpoint deciding
+     * it has to be able to ask the same question the store will answer for
+     * itself a moment later. Two answers to "what is this" is exactly the
+     * disagreement that lets somebody store one kind of thing under permission
+     * for another.
      *
      * `finfo` reads the content's own signature, so a PNG renamed to `.svg`,
      * or an SVG full of script announced as an image, is answered truthfully.
+     *
+     * Whether it knows glTF depends on which libmagic an operator's PHP was
+     * built against: newer ones answer `model/gltf-binary` and older ones say
+     * `application/octet-stream`, which is the name for "no idea" and would see
+     * every model refused by the allow-list below. Whether a resident may keep
+     * a body is not a thing to decide by which machine this is running on, so
+     * the twelve bytes that settle it are read here rather than delegated.
+     *
+     * This is still deciding by looking at the bytes, which is the rule this
+     * method exists to enforce; it is a better look, not a laxer one.
      */
-    private function sniff(string $bytes): string
+    public function identify(string $bytes): string
     {
+        if (Glb::looksLikeOne($bytes)) {
+            return Glb::MIME;
+        }
+
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes);
 
         if (! is_string($mime) || $mime === '') {

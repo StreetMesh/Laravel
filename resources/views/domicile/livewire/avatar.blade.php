@@ -18,6 +18,8 @@ class extends Component
 
     public ?TemporaryUploadedFile $picture = null;
 
+    public ?TemporaryUploadedFile $model = null;
+
     public string $name = '';
 
     public string $trouble = '';
@@ -63,12 +65,35 @@ class extends Component
                 .($avatar === null ? '' : '?'.$avatar->icon_cid);
     }
 
+    /**
+     * Where the body is, when there is one.
+     *
+     * The other published address, and null rather than a link when nothing
+     * has been built -- `/avatar` answers 404 in that case, and offering a
+     * link to it would be this screen implying something is there.
+     */
+    public function publishedModel(): ?string
+    {
+        $avatar = $this->avatar();
+        $resident = $this->resident();
+
+        return $resident === null || $avatar?->model_cid === null
+            ? null
+            : 'https://'.$resident->handle.'/avatar?'.$avatar->model_cid;
+    }
+
     public function save(): void
     {
         $this->trouble = '';
 
+        /*
+         * Kilobytes, and deliberately the same ceilings the blob store keeps:
+         * a file refused there is refused after it has been uploaded, decoded
+         * and half stored, which is a slow way to be told no.
+         */
         $this->validate([
             'picture' => ['required', 'image', 'max:8192'],
+            'model' => ['nullable', 'file', 'max:16384'],
             'name' => ['nullable', 'string', 'max:60'],
         ]);
 
@@ -85,14 +110,19 @@ class extends Component
          * person looking at the screen rather than a stack trace.
          */
         try {
-            app(Avatars::class)->adopt($resident, (string) $this->picture?->get(), trim($this->name));
+            app(Avatars::class)->adopt(
+                $resident,
+                (string) $this->picture?->get(),
+                $this->model === null ? null : (string) $this->model->get(),
+                trim($this->name),
+            );
         } catch (\RuntimeException $refused) {
             $this->trouble = $refused->getMessage();
 
             return;
         }
 
-        $this->reset('picture', 'name');
+        $this->reset('picture', 'model', 'name');
     }
 };?>
 
@@ -152,6 +182,13 @@ class extends Component
                                 {{ __('Anybody may fetch this. Nobody has to ask.') }}
                             @endif
                         </flux:text>
+
+                        @if ($this->publishedModel() !== null)
+                            <flux:text class="font-mono break-all">{{ $resident->handle }}/avatar</flux:text>
+                            <flux:text variant="subtle" size="sm">
+                                {{ __('Your body, for places that draw one.') }}
+                            </flux:text>
+                        @endif
                     </div>
                 </div>
 
@@ -162,6 +199,14 @@ class extends Component
                         accept="image/*"
                         :label="__('Picture')"
                         :description="__('Cropped square from the middle and re-encoded here, so what is published is this server\'s own copy.')"
+                    />
+
+                    <flux:input
+                        type="file"
+                        wire:model="model"
+                        accept=".vrm,.glb,model/gltf-binary"
+                        :label="__('Body')"
+                        :description="__('A VRM. Kept as it arrived — this server cannot rewrite a model the way it rewrites a picture — and served at your address for spatial places to put you in.')"
                     />
 
                     <flux:input

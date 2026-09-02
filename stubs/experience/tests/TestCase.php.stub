@@ -47,6 +47,17 @@ abstract class TestCase extends Orchestra
          */
         $app['config']->set('database.connections.testing.foreign_key_constraints', true);
 
+        /*
+         * This is a venue, or its routes never load.
+         *
+         * The provider refuses to serve an experience's screens on a server
+         * that is not one, which is right -- and it means a suite that does not
+         * say so tests a package with no routes in it, and every assertion
+         * about a route fails with "not defined" rather than with anything
+         * about capabilities.
+         */
+        $app['config']->set('streetmesh.capabilities.venue', true);
+
         /* A venue refuses to boot without somewhere live to point at. */
         $app['config']->set('streetmesh.venue.hub', 'wss://hub.invalid');
         $app['config']->set('streetmesh.venue.secret', 'a-secret-shared-with-the-hub');

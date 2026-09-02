@@ -39,13 +39,86 @@ use InvalidArgumentException;
 final class Collections
 {
     /**
-     * @param  array<string, string>  $declared  collection NSID => visibility
+     * Collection NSID => visibility.
+     *
+     * @var array<string, string>
      */
-    public function __construct(private readonly array $declared = []) {}
+    private readonly array $declared;
+
+    /**
+     * The collections whose records are somebody's own claim rather than a
+     * third party's statement about them.
+     *
+     * @var array<int, string>
+     */
+    private readonly array $claims;
+
+    /**
+     * Two shapes, because almost every collection only has one thing to say.
+     *
+     * A visibility on its own is the ordinary case and stays the ordinary case:
+     * `'com.example.thing' => Record::PUBLIC`. A collection with more to
+     * declare says so in full:
+     *
+     *     'com.streetmesh.actor.avatar' => [
+     *         'visibility' => Record::PUBLIC,
+     *         'attested' => false,
+     *     ],
+     *
+     * Normalised here rather than everywhere it is read, so that widening what
+     * an operator may declare did not widen what the rest of this class has to
+     * cope with.
+     *
+     * @param  array<string, string|array{visibility?: string, attested?: bool}>  $declared
+     */
+    public function __construct(array $declared = [])
+    {
+        $visibility = [];
+        $claims = [];
+
+        foreach ($declared as $collection => $declaration) {
+            if (is_array($declaration)) {
+                $visibility[$collection] = (string) ($declaration['visibility'] ?? Record::PRIVATE);
+
+                if (($declaration['attested'] ?? true) === false) {
+                    $claims[] = $collection;
+                }
+
+                continue;
+            }
+
+            $visibility[$collection] = $declaration;
+        }
+
+        $this->declared = $visibility;
+        $this->claims = $claims;
+    }
 
     public function knows(string $collection): bool
     {
         return isset($this->declared[$collection]);
+    }
+
+    /**
+     * Does a record of this kind carry somebody else's signed statement?
+     *
+     * True for almost everything, and that default is the careful direction. A
+     * chess result is a venue saying who won, and the signature is the whole
+     * reason the record is worth holding after the venue has shut down; taking
+     * the readable fields instead of the signed ones would make it worth
+     * nothing and look identical.
+     *
+     * False for the few kinds of thing nobody is in a position to attest to. An
+     * avatar is the first: nobody can witness what somebody looks like, there
+     * is no third party who could, and a signature over one would be a
+     * signature over an opinion. Such a record is stored as the claim itself.
+     *
+     * This does not decide whether a signature is *required in transit* -- it
+     * always is, and the endpoint always checks it. It decides what is kept.
+     */
+    public function attests(string $collection): bool
+    {
+        return ! in_array($collection, $this->claims, strict: true);
     }
 
     public function visibilityOf(string $collection): string

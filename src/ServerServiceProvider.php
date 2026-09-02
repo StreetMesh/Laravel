@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
@@ -33,6 +34,7 @@ use StreetMesh\Server\Protocol\Records\Collections;
 use StreetMesh\Server\Protocol\Records\CommitLog;
 use StreetMesh\Server\Protocol\Records\Record;
 use StreetMesh\Server\Protocol\Records\RecordStore;
+use StreetMesh\Server\Protocol\Records\RecordWritten;
 use StreetMesh\Server\Venue\Console\BuildHub;
 use StreetMesh\Server\Venue\Console\DeployHub;
 use StreetMesh\Server\Venue\Console\MakeExperience;
@@ -188,6 +190,7 @@ class ServerServiceProvider extends ServiceProvider
         $this->app->make(Capabilities::class)->register(new DomicileCapability);
 
         $this->declareAvatars();
+        $this->projectAvatars();
 
         $this->loadViewsFrom(__DIR__.'/../resources/views/domicile', 'domicile');
 
@@ -264,23 +267,63 @@ class ServerServiceProvider extends ServiceProvider
      * that as permission to move this into `register`. It is not: the laziness
      * of the binding is what makes the timing safe, and that has not changed.
      *
-     * Only if nobody has already answered. Visibility is what a server
-     * publishes, which is the operator's sentence to write; an operator who has
-     * said these are private meant it, and what they get is residents whose
-     * permalink answers with nothing rather than a setting quietly overruled.
+     * Two declarations with different owners, which is why this is no longer a
+     * single line.
+     *
+     * Visibility is what a server publishes, and that is the operator's
+     * sentence to write. An operator who has said these are private meant it,
+     * and what they get is residents whose permalink answers with nothing
+     * rather than a setting quietly overruled — so an answer already given is
+     * kept.
+     *
+     * Whether an avatar is an attestation is not a preference and is pinned
+     * regardless. Nobody is in a position to witness what somebody looks like;
+     * a server that stored these as though somebody had would be keeping a
+     * signature over an opinion, and an operator writing a visibility into a
+     * config file is not asking for that and would have no way to know they had
+     * caused it.
      */
     private function declareAvatars(): void
     {
-        /** @var array<string, string> $declared */
+        /** @var array<string, string|array{visibility?: string, attested?: bool}> $declared */
         $declared = (array) config('streetmesh.collections', []);
 
-        if (array_key_exists(Avatars::COLLECTION, $declared)) {
-            return;
-        }
+        $already = $declared[Avatars::COLLECTION] ?? null;
 
-        $declared[Avatars::COLLECTION] = Record::PUBLIC;
+        $visibility = match (true) {
+            is_array($already) => (string) ($already['visibility'] ?? Record::PUBLIC),
+            is_string($already) => $already,
+            default => Record::PUBLIC,
+        };
+
+        $declared[Avatars::COLLECTION] = ['visibility' => $visibility, 'attested' => false];
 
         config(['streetmesh.collections' => $declared]);
+    }
+
+    /**
+     * Keep the index of faces agreeing with the records behind it.
+     *
+     * A resident choosing a face at their own settings screen writes the record
+     * and the projection together, in one transaction. A venue they granted
+     * permission to writes only the record — it is talking to an endpoint that
+     * knows nothing about avatars, which is what lets that endpoint accept
+     * kinds of record this server has never heard of. So the answer to "which
+     * face is theirs now" is brought up to date here instead.
+     *
+     * Both routes end in the same method. Two implementations of "what does
+     * this record mean" would be two answers, and the one nobody was looking at
+     * would be the wrong one.
+     */
+    private function projectAvatars(): void
+    {
+        Event::listen(function (RecordWritten $written): void {
+            if ($written->record->collection !== Avatars::COLLECTION) {
+                return;
+            }
+
+            $this->app->make(Avatars::class)->project($written->record->did, $written->record);
+        });
     }
 
     // ── Somewhere people gather ─────────────────────────────────────────────

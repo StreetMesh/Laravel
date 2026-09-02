@@ -4,16 +4,15 @@ namespace StreetMesh\Server\Protocol\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use RuntimeException;
 use StreetMesh\Protocol\AtUri;
 use StreetMesh\Protocol\Did;
-use StreetMesh\Protocol\Dpop;
 use StreetMesh\Protocol\Scope;
 use StreetMesh\Server\Protocol\Attestations\Attestations;
+use StreetMesh\Server\Protocol\Blobs\BlobStore;
 use StreetMesh\Server\Protocol\Identity\DidResolver;
-use StreetMesh\Server\Protocol\Permissions\Permission;
-use StreetMesh\Server\Protocol\Permissions\Permissions;
+use StreetMesh\Server\Protocol\Records\Collections;
 use StreetMesh\Server\Protocol\Records\RecordStore;
+use StreetMesh\Server\Protocol\Records\RecordWritten;
 use Throwable;
 
 /**
@@ -32,8 +31,10 @@ use Throwable;
 final class RepoController
 {
     public function __construct(
-        private readonly Permissions $permissions,
+        private readonly Bearer $bearer,
         private readonly RecordStore $records,
+        private readonly Collections $collections,
+        private readonly BlobStore $blobs,
         private readonly Attestations $attestations,
         private readonly DidResolver $resolver,
     ) {}
@@ -41,7 +42,7 @@ final class RepoController
     public function create(Request $request): JsonResponse
     {
         try {
-            $permission = $this->bearer($request);
+            $permission = $this->bearer->in($request);
         } catch (Throwable $refused) {
             return response()->json([
                 'error' => 'invalid_token',
@@ -101,7 +102,48 @@ final class RepoController
             ], 400);
         }
 
-        $value = $attested->toRecord();
+        $did = (string) $permission->did;
+
+        /*
+         * What is kept, which is not the same question as what was checked.
+         *
+         * Almost everything here is an attestation, and for those the fields
+         * are taken from inside the signature and the compact form is kept
+         * beside them — that is what a stranger can check years later.
+         *
+         * A few kinds of record are somebody's own claim about themselves, and
+         * an avatar is the first. Nobody attests to a face; storing one wrapped
+         * as though somebody had would put a signature over an opinion, and
+         * would make a face written by a venue a different shape from the same
+         * face written by the resident at their own settings screen. So the
+         * claim is stored as itself.
+         *
+         * The signature is not skipped for those. It was required, checked, and
+         * matched against the client a moment ago — it is how these bytes are
+         * known not to have been altered on the way. What it is not is part of
+         * the record.
+         */
+        $value = $this->collections->attests($collection)
+            ? $attested->toRecord()
+            : [...$attested->claims, 'writtenBy' => $attested->issuer];
+
+        /*
+         * A record may name bytes, and the bytes have to already be here.
+         *
+         * `$link` is a name rather than a reference, and a name is satisfied by
+         * whatever happens to be at it — nothing later would notice. So a
+         * record pointing at a blob this server does not hold is refused now,
+         * while there is somebody to tell.
+         */
+        $missing = $this->unresolved($value, $did);
+
+        if ($missing !== []) {
+            return response()->json([
+                'error' => 'invalid_request',
+                'message' => 'That record refers to bytes this server is not holding: '
+                    .implode(', ', $missing).'. Upload them first.',
+            ], 400);
+        }
 
         /*
          * Written into the granting resident's own store, and nowhere else. The
@@ -110,7 +152,7 @@ final class RepoController
          * it would let one person's permission write into another's store.
          */
         try {
-            $record = $this->records->put((string) $permission->did, $collection, $value);
+            $record = $this->records->put($did, $collection, $value);
         } catch (Throwable $refused) {
             /*
              * Most likely a collection this server has not declared. That is a
@@ -123,6 +165,13 @@ final class RepoController
                 'message' => $refused->getMessage(),
             ], 400);
         }
+
+        /*
+         * Whatever keeps an index of this kind of record can now bring it up to
+         * date. Nothing here knows which parts of this server those are, or
+         * whether any of them care about a collection it may never have seen.
+         */
+        event(new RecordWritten($record));
 
         return response()->json([
             'uri' => (string) AtUri::make($record->did, $record->collection, $record->rkey),
@@ -166,29 +215,34 @@ final class RepoController
     }
 
     /**
-     * Whose permission is being presented, if anybody's.
+     * Every blob a record names that this server is not holding.
      *
-     * A token alone proves nothing here. It has to arrive with a proof from the
-     * key it was issued to, which is what stops a copied token being worth
-     * anything to whoever copied it.
+     * Recursive because a reference may be anywhere in a record's shape --
+     * nothing here knows what any particular collection looks like, and a
+     * lexicon this server has never seen is exactly the case the network is
+     * built for.
+     *
+     * @param  array<mixed>  $value
+     * @return array<int, string>
      */
-    private function bearer(Request $request): Permission
+    private function unresolved(array $value, string $did): array
     {
-        $header = (string) $request->header('Authorization');
+        $missing = [];
 
-        if (! str_starts_with($header, 'DPoP ')) {
-            throw new RuntimeException('A token here is presented with a proof, not on its own.');
+        if (($value['$type'] ?? null) === 'blob') {
+            $link = $value['ref']['$link'] ?? null;
+
+            if (is_string($link) && ! $this->blobs->holds($did, $link)) {
+                $missing[] = $link;
+            }
         }
 
-        $token = substr($header, strlen('DPoP '));
+        foreach ($value as $nested) {
+            if (is_array($nested)) {
+                $missing = [...$missing, ...$this->unresolved($nested, $did)];
+            }
+        }
 
-        $thumbprint = Dpop::check(
-            (string) $request->header('DPoP'),
-            $request->method(),
-            $request->url(),
-            accessToken: $token,
-        );
-
-        return $this->permissions->holder($token, $thumbprint);
+        return array_values(array_unique($missing));
     }
 }

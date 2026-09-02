@@ -49,21 +49,28 @@ final readonly class Avatars
     /**
      * Take on a new face.
      *
-     * The uploaded bytes are re-encoded before anything else happens, so what
+     * The uploaded picture is re-encoded before anything else happens, so what
      * is stored, named and served is this server's own PNG rather than a
-     * stranger's file. See `Icon`.
+     * stranger's file. See `Icon`. A model cannot be re-encoded and is checked
+     * instead; see `Model`, which says at length why that is a weaker promise.
      *
      * One transaction, because a projection pointing at a record that was never
      * written is worse than either failing: the permalink would answer with a
      * name nothing holds.
      */
-    public function adopt(Identity $resident, string $uploaded, string $name = ''): Avatar
-    {
+    public function adopt(
+        Identity $resident,
+        string $uploaded,
+        ?string $model = null,
+        string $name = '',
+    ): Avatar {
         $icon = Icon::from($uploaded);
+        $body = $model === null ? null : Model::from($model);
         $did = (string) $resident->did;
 
-        return DB::transaction(function () use ($did, $icon, $name): Avatar {
+        return DB::transaction(function () use ($did, $icon, $body, $name): Avatar {
             $blob = $this->blobs->put($did, $icon->bytes, self::COLLECTION);
+            $model = $body === null ? null : $this->blobs->put($did, $body->bytes, self::COLLECTION);
 
             $record = $this->records->put($did, self::COLLECTION, [
                 'name' => $name === '' ? __('Me') : $name,
@@ -74,33 +81,42 @@ final readonly class Avatars
                  * already knows how to follow one of these, and a record only
                  * somebody here can read is a record that has not left.
                  */
-                'icon' => [
-                    '$type' => 'blob',
-                    'ref' => ['$link' => $blob->cid],
-                    'mimeType' => $blob->mime,
-                    'size' => $blob->size,
-                ],
+                'icon' => $blob->reference(),
 
-                // The other half of an avatar, and the half nothing writes yet.
-                'model' => null,
+                // The other half, for as long as somebody has built one.
+                'model' => $model?->reference(),
 
                 'createdAt' => now()->toIso8601ZuluString(),
             ]);
 
-            /*
-             * Replacing rather than adding, because a resident may keep one.
-             * The record it was projected from is not replaced — it stays, and
-             * so does the one before it, which is how a person can see what
-             * they used to look like.
-             */
-            return Avatar::query()->updateOrCreate(['did' => $did], [
-                'rkey' => $record->rkey,
-                'name' => $record->value['name'],
-                'icon_cid' => $blob->cid,
-                'model_cid' => null,
-                'is_default' => true,
-            ]);
+            return $this->project($did, $record);
         });
+    }
+
+    /**
+     * Make the index agree with a record.
+     *
+     * Split out from writing one, because a resident is not the only party who
+     * can write their face: a venue they granted permission to may write one
+     * over the wire, and that record has to reach this table by the same route
+     * or the projection would describe whichever avatar happened to be adopted
+     * here. So this reads a record and nothing else, which is also what makes
+     * the migration's promise true -- every column derived from a record, and
+     * every one of them rebuildable by replaying them.
+     *
+     * Replacing rather than adding, because a resident may keep one. The record
+     * it was projected from is not replaced: it stays, and so does the one
+     * before it, which is how a person can see what they used to look like.
+     */
+    public function project(string $did, Record $record): Avatar
+    {
+        return Avatar::query()->updateOrCreate(['did' => $did], [
+            'rkey' => $record->rkey,
+            'name' => (string) ($record->value['name'] ?? __('Me')),
+            'icon_cid' => self::linkIn($record->value, 'icon') ?? '',
+            'model_cid' => self::linkIn($record->value, 'model'),
+            'is_default' => true,
+        ]);
     }
 
     /**
@@ -125,5 +141,23 @@ final readonly class Avatars
     public function history(string $did): Collection
     {
         return $this->records->list($did, self::COLLECTION, asStranger: false);
+    }
+
+    /**
+     * The content name a record's field points at, or null.
+     *
+     * Tolerant on the way in because this reads records that arrived from
+     * somewhere else as well as ones written here, and a field that is missing,
+     * null, or the wrong shape all mean the same thing to a reader: there is no
+     * picture of that kind. Refusing would be this server deciding a resident
+     * has no face because a venue wrote an unfamiliar dialect.
+     *
+     * @param  array<string, mixed>  $value
+     */
+    private static function linkIn(array $value, string $field): ?string
+    {
+        $link = $value[$field]['ref']['$link'] ?? null;
+
+        return is_string($link) && $link !== '' ? $link : null;
     }
 }

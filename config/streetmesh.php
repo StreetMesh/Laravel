@@ -193,9 +193,14 @@ return [
     | stranger's choosing served back from a resident's own hostname — the same
     | origin their identity documents are answered from.
     |
-    | PNG alone, for now, because it is the only thing anything here produces:
-    | an uploaded icon is re-encoded before it is stored, so whatever somebody
-    | had is not what is kept. Models join this list when models are built.
+    | PNG is what an icon is, and it is re-encoded before it is stored, so
+    | whatever somebody uploaded is not what is kept.
+    |
+    | A model cannot be re-encoded here — there is no glTF writer in PHP — so
+    | what is stored is what arrived, checked for being a well-formed avatar
+    | and nothing further. The ceiling is doing more of the work in that case
+    | than it is for a picture, which is why it is stated in megabytes rather
+    | than inherited from anything.
     |
     */
 
@@ -213,6 +218,7 @@ return [
 
         'limits' => [
             'image/png' => 512 * 1024,
+            'model/gltf-binary' => 16 * 1024 * 1024,
         ],
     ],
 

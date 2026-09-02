@@ -12,7 +12,10 @@ use StreetMesh\Protocol\Network;
 use StreetMesh\Protocol\P256;
 use StreetMesh\Protocol\Pkce;
 use StreetMesh\Protocol\Scope;
+use StreetMesh\Server\Domicile\Avatars\Avatars;
 use StreetMesh\Server\Protocol\Attestations\Attestations;
+use StreetMesh\Server\Protocol\Blobs\Blob;
+use StreetMesh\Server\Protocol\Blobs\BlobStore;
 use StreetMesh\Server\Protocol\Permissions\Permissions;
 use StreetMesh\Server\Protocol\Permissions\Spent;
 use StreetMesh\Server\Protocol\Records\Record;
@@ -352,5 +355,133 @@ class RepoTest extends TestCase
         $this->write(['collection' => self::CHESS, 'record' => $this->attested(['result' => 'win'])])->assertUnauthorized();
 
         $this->assertSame(1, Record::query()->count(), 'only the one written while it was allowed');
+    }
+
+    // ── Records that are claims rather than statements ──────────────────────
+
+    /**
+     * An avatar arrives signed and is not stored signed.
+     *
+     * Every other record here wraps an attestation, and for those the signature
+     * is the point: a venue says who won, and a stranger can check that years
+     * later. Nobody is in a position to witness what somebody looks like, so a
+     * signature over a face would be a signature over an opinion — and a face
+     * written by a venue would be a different shape from the same face the
+     * resident wrote at their own settings screen.
+     *
+     * What is kept instead is the claim, plus which venue put it there.
+     */
+    public function test_a_face_is_stored_as_a_claim_rather_than_as_a_statement(): void
+    {
+        $blob = $this->heldBlob();
+
+        $this->write([
+            'collection' => Avatars::COLLECTION,
+            'record' => $this->attested([
+                'name' => 'Weekday',
+                'icon' => $blob->reference(),
+                'createdAt' => now()->toIso8601ZuluString(),
+            ]),
+        ], token: $this->grant('atproto '.Scope::forRepo([Avatars::COLLECTION], [Scope::CREATE])))
+            ->assertCreated();
+
+        $value = Record::query()->firstOrFail()->value;
+
+        $this->assertSame('Weekday', $value['name']);
+        $this->assertSame($blob->cid, $value['icon']['ref']['$link']);
+        $this->assertArrayNotHasKey('attestation', $value, 'a face carries no signature over it');
+        $this->assertSame(self::VENUE_DID, $value['writtenBy'], 'but it says who wrote it');
+    }
+
+    /**
+     * Not stored signed is not the same as not required to be signed.
+     *
+     * The signature is how these bytes are known not to have been altered
+     * between the venue and here. Dropping it from the record does not drop it
+     * from the conversation.
+     */
+    public function test_a_claim_still_has_to_arrive_signed(): void
+    {
+        $this->write([
+            'collection' => Avatars::COLLECTION,
+            'record' => ['name' => 'Weekday', 'createdAt' => now()->toIso8601ZuluString()],
+        ], token: $this->grant('atproto '.Scope::forRepo([Avatars::COLLECTION], [Scope::CREATE])))
+            ->assertStatus(400);
+
+        $this->assertSame(0, Record::query()->count());
+    }
+
+    /**
+     * A venue writing a face changes which face is theirs.
+     *
+     * The record is the fact and the index beside it is the answer to "which
+     * one is current", which a record cannot give. A venue talks to an endpoint
+     * that knows nothing about avatars, so if that index were only updated by
+     * the settings screen, a face written from a venue would be stored and
+     * never shown.
+     */
+    public function test_a_venue_writing_a_face_changes_which_face_is_theirs(): void
+    {
+        $blob = $this->heldBlob();
+
+        $this->write([
+            'collection' => Avatars::COLLECTION,
+            'record' => $this->attested([
+                'name' => 'Weekday',
+                'icon' => $blob->reference(),
+                'createdAt' => now()->toIso8601ZuluString(),
+            ]),
+        ], token: $this->grant('atproto '.Scope::forRepo([Avatars::COLLECTION], [Scope::CREATE])))
+            ->assertCreated();
+
+        $avatar = $this->app->make(Avatars::class)->defaultFor(self::ALICE);
+
+        $this->assertNotNull($avatar);
+        $this->assertSame('Weekday', $avatar->name);
+        $this->assertSame($blob->cid, $avatar->icon_cid);
+        $this->assertSame(Record::query()->firstOrFail()->rkey, $avatar->rkey);
+    }
+
+    /**
+     * A record may not name bytes nobody is holding.
+     *
+     * `$link` is a name rather than a reference, and a name is satisfied by
+     * whatever happens to be at it — so nothing downstream would ever notice.
+     * Refused now, while there is somebody to tell.
+     */
+    public function test_a_record_naming_bytes_nobody_holds_is_refused(): void
+    {
+        $this->write([
+            'collection' => Avatars::COLLECTION,
+            'record' => $this->attested([
+                'name' => 'Weekday',
+                'icon' => [
+                    '$type' => 'blob',
+                    'ref' => ['$link' => 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+                    'mimeType' => 'image/png',
+                    'size' => 12,
+                ],
+                'createdAt' => now()->toIso8601ZuluString(),
+            ]),
+        ], token: $this->grant('atproto '.Scope::forRepo([Avatars::COLLECTION], [Scope::CREATE])))
+            ->assertStatus(400)
+            ->assertJsonPath('error', 'invalid_request');
+
+        $this->assertSame(0, Record::query()->count());
+    }
+
+    /**
+     * Bytes this server is already holding for the resident in question.
+     */
+    private function heldBlob(): Blob
+    {
+        $canvas = imagecreatetruecolor(4, 4);
+
+        ob_start();
+        imagepng($canvas);
+        $png = (string) ob_get_clean();
+        imagedestroy($canvas);
+
+        return $this->app->make(BlobStore::class)->put(self::ALICE, $png, Avatars::COLLECTION);
     }
 }

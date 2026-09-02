@@ -4,6 +4,7 @@ namespace StreetMesh\Server\Protocol\Permissions;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use StreetMesh\Protocol\BlobScope;
 use StreetMesh\Protocol\P256;
 use StreetMesh\Protocol\Scope;
 
@@ -90,5 +91,18 @@ class Delegation extends Model
     public function permits(string $collection, string $action = Scope::CREATE): bool
     {
         return Scope::permits($this->scopes(), $collection, $action);
+    }
+
+    /**
+     * May this store bytes of that type?
+     *
+     * A separate question from `permits`, and neither implies the other: being
+     * allowed to write a kind of record does not say what may be kept alongside
+     * it, and a resident reading a consent screen is shown the two separately
+     * because they are two things to agree to.
+     */
+    public function permitsKeeping(string $mime): bool
+    {
+        return BlobScope::permits($this->scopes(), $mime);
     }
 }
