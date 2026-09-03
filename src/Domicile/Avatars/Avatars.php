@@ -94,6 +94,41 @@ final readonly class Avatars
     }
 
     /**
+     * Put one away.
+     *
+     * Soft, and it has to be: a record is written once and stands forever, so
+     * the thing being discarded is the projection rather than the fact. What a
+     * resident is saying is "stop offering me this one", not "this never
+     * happened".
+     *
+     * If they were wearing it, the newest of what remains is worn instead --
+     * leaving somebody with no face because they tidied up would be a poor
+     * answer to a tidy-up.
+     */
+    public function discard(Avatar $avatar): void
+    {
+        DB::transaction(function () use ($avatar): void {
+            $wasWorn = (bool) $avatar->is_default;
+
+            $avatar->forceFill(['is_default' => false])->save();
+            $avatar->delete();
+
+            if (! $wasWorn) {
+                return;
+            }
+
+            $next = Avatar::query()
+                ->where('did', $avatar->did)
+                ->orderByDesc('rkey')
+                ->first();
+
+            if ($next !== null) {
+                $this->prefer($next);
+            }
+        });
+    }
+
+    /**
      * Every avatar somebody is keeping, newest first.
      *
      * The projections rather than the records, because this answers "which of
@@ -151,10 +186,23 @@ final readonly class Avatars
      */
     public function project(string $did, Record $record): Avatar
     {
-        $avatar = Avatar::query()->updateOrCreate(['did' => $did, 'rkey' => $record->rkey], [
+        $avatar = Avatar::withTrashed()->updateOrCreate(['did' => $did, 'rkey' => $record->rkey], [
             'name' => (string) ($record->value['name'] ?? __('Me')),
             'icon_cid' => self::linkIn($record->value, 'icon') ?? '',
             'model_cid' => self::linkIn($record->value, 'model'),
+
+            /*
+             * Which venue carried it, when one did. Set by the endpoint that
+             * received it, and absent on an avatar a resident uploaded
+             * themselves -- there was nobody else involved in that one.
+             */
+            'written_by' => isset($record->value['writtenBy'])
+                ? (string) $record->value['writtenBy']
+                : null,
+
+            // Writing the same record again un-discards it, which is the only
+            // reading that makes sense: it is here again because it arrived again.
+            'deleted_at' => null,
         ]);
 
         return $this->prefer($avatar);

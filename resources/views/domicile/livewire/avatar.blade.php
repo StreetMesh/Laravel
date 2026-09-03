@@ -1,5 +1,7 @@
 <?php
 
+use Flux\Flux;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -41,31 +43,50 @@ class extends Component
     /**
      * Every avatar this resident keeps, newest first.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Avatar>
+     * @return Collection<int, Avatar>
      */
     public function wardrobe()
     {
         $resident = $this->resident();
 
         return $resident === null
-            ? new \Illuminate\Database\Eloquent\Collection
+            ? new Collection
             : app(Avatars::class)->allFor((string) $resident->did);
     }
 
     /** Wear one of them. */
     public function wear(int $id): void
     {
-        $resident = $this->resident();
-
-        if ($resident === null) {
-            return;
-        }
-
-        $avatar = Avatar::query()->where('did', (string) $resident->did)->find($id);
+        $avatar = $this->mine($id);
 
         if ($avatar !== null) {
             app(Avatars::class)->prefer($avatar);
         }
+    }
+
+    /** Put one away. The record stands; this is the wardrobe, not the history. */
+    public function discard(int $id): void
+    {
+        $avatar = $this->mine($id);
+
+        if ($avatar !== null) {
+            app(Avatars::class)->discard($avatar);
+        }
+    }
+
+    /**
+     * One of this resident's own, or null.
+     *
+     * Scoped by DID rather than by id alone, so a guessed number reaches
+     * nothing: the id is in the markup and the markup is somebody's browser.
+     */
+    private function mine(int $id): ?Avatar
+    {
+        $resident = $this->resident();
+
+        return $resident === null
+            ? null
+            : Avatar::query()->where('did', (string) $resident->did)->find($id);
     }
 
     public function avatar(): ?Avatar
@@ -146,15 +167,18 @@ class extends Component
                 $this->model === null ? null : (string) $this->model->get(),
                 trim($this->name),
             );
-        } catch (\RuntimeException $refused) {
+        } catch (RuntimeException $refused) {
             $this->trouble = $refused->getMessage();
 
             return;
         }
 
         $this->reset('picture', 'model', 'name');
+
+        // Otherwise it sits there over the wardrobe it has just added to.
+        Flux::modal('new-avatar')->close();
     }
-};?>
+}; ?>
 
 {{--
     Choosing a face.
@@ -222,81 +246,134 @@ class extends Component
                     </div>
                 </div>
 
-                @if ($this->wardrobe()->count() > 1)
+                @if ($this->wardrobe()->isNotEmpty())
                     {{--
                         The ones already made.
 
                         Every choice writes a record and the old ones stand, so
-                        a resident who has built four faces has four -- this is
-                        where they pick which one everywhere else draws. The
-                        icons come from the resident's own address rather than
-                        from this page, so what is shown here is what a venue
-                        would fetch.
+                        somebody who has built four faces has four. Each icon is
+                        fetched by its own content name rather than from
+                        `/avatar/icon`, which always answers with whichever is
+                        current -- every thumbnail would otherwise be the same
+                        face under four different labels.
                     --}}
                     <div class="flex flex-col gap-2">
                         <flux:subheading>{{ __('Yours') }}</flux:subheading>
 
-                        <div class="flex flex-wrap gap-3">
+                        <div class="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-700">
                             @foreach ($this->wardrobe() as $kept)
-                                <button
-                                    type="button"
-                                    wire:click="wear({{ $kept->id }})"
-                                    class="flex flex-col items-center gap-1"
-                                    title="{{ $kept->name }}"
-                                >
+                                <div class="flex items-center gap-3 py-3">
                                     <flux:avatar
                                         size="lg"
                                         circle
                                         :src="route('streetmesh.blob.get', ['did' => $kept->did, 'cid' => $kept->icon_cid])"
                                         :name="$kept->name"
-                                        :class="$kept->is_default ? 'ring-2 ring-accent' : 'opacity-60'"
                                     />
-                                    <flux:text size="sm" :variant="$kept->is_default ? null : 'subtle'">
-                                        {{ $kept->name }}
-                                    </flux:text>
-                                </button>
+
+                                    <div class="flex min-w-0 flex-1 flex-col">
+                                        <flux:text class="font-medium">{{ $kept->name }}</flux:text>
+
+                                        @if ($kept->builtAt() !== null)
+                                            {{-- Where it was made, taken from the claim itself. A
+                                                 did:web is a hostname with a prefix, which is what
+                                                 makes it somewhere to go back to rather than an
+                                                 identifier to look at. --}}
+                                            <flux:text size="sm" variant="subtle">
+                                                {{ __('Built at') }}
+                                                <flux:link :href="$kept->builtAt()" external>
+                                                    {{ parse_url($kept->builtAt(), PHP_URL_HOST) }}
+                                                </flux:link>
+                                            </flux:text>
+                                        @else
+                                            <flux:text size="sm" variant="subtle">{{ __('Uploaded here') }}</flux:text>
+                                        @endif
+                                    </div>
+
+                                    @if ($kept->is_default)
+                                        <flux:badge size="sm" color="lime">{{ __('Worn') }}</flux:badge>
+                                    @else
+                                        <flux:button size="sm" wire:click="wear({{ $kept->id }})">
+                                            {{ __('Wear') }}
+                                        </flux:button>
+                                    @endif
+
+                                    {{-- Soft: the record stands, and so does the picture. What is
+                                         being discarded is this resident's own shortlist. --}}
+                                    <flux:button
+                                        size="sm"
+                                        variant="subtle"
+                                        icon="trash"
+                                        wire:click="discard({{ $kept->id }})"
+                                        wire:confirm="{{ __('Put this avatar away? Your record of it is kept either way.') }}"
+                                    />
+                                </div>
                             @endforeach
                         </div>
                     </div>
                 @endif
 
-                <form wire:submit="save" class="flex flex-col gap-4">
-                    <flux:input
-                        type="file"
-                        wire:model="picture"
-                        accept="image/*"
-                        :label="__('Picture')"
-                        :description="__('Cropped square from the middle and re-encoded here, so what is published is this server\'s own copy.')"
-                    />
+                {{--
+                    Making one is a separate act from choosing between them.
 
-                    <flux:input
-                        type="file"
-                        wire:model="model"
-                        accept=".vrm,.glb,model/gltf-binary"
-                        :label="__('Body')"
-                        :description="__('A VRM. Kept as it arrived — this server cannot rewrite a model the way it rewrites a picture — and served at your address for spatial places to put you in.')"
-                    />
+                    With a wardrobe on the screen, three upload fields sitting
+                    underneath it read as leftovers -- it is not obvious they
+                    make a new avatar rather than edit the one being worn. A
+                    modal says which of the two you are doing.
+                --}}
+                <div>
+                    <flux:modal.trigger name="new-avatar">
+                        <flux:button icon="plus" variant="primary">{{ __('Add an avatar') }}</flux:button>
+                    </flux:modal.trigger>
+                </div>
 
-                    <flux:input
-                        wire:model="name"
-                        :label="__('Alias')"
-                        :placeholder="__('Me')"
-                        :description="__('Nobody else sees this.')"
-                    />
+                <flux:modal name="new-avatar" class="md:w-[32rem]">
+                    <div class="flex flex-col gap-6">
+                        <div>
+                            <flux:heading size="lg">{{ __('New avatar') }}</flux:heading>
+                            <flux:text class="mt-2">
+                                {{ __('Published at your own address, where anywhere you go can fetch it.') }}
+                            </flux:text>
+                        </div>
 
-                    @if ($trouble !== '')
-                        <flux:callout variant="danger" icon="exclamation-triangle">
-                            <flux:callout.text>{{ $trouble }}</flux:callout.text>
-                        </flux:callout>
-                    @endif
+                    <form wire:submit="save" class="flex flex-col gap-6">
+                        <flux:input
+                            type="file"
+                            wire:model="picture"
+                            accept="image/*"
+                            :label="__('Picture')"
+                            :description="__('Cropped square from the middle and re-encoded here, so what is published is this server\'s own copy.')"
+                        />
 
-                    <div class="flex items-center gap-3">
-                        <flux:button type="submit" variant="primary">{{ __('Publish') }}</flux:button>
-                        <flux:text wire:loading wire:target="save" variant="subtle" size="sm">
-                            {{ __('Publishing…') }}
-                        </flux:text>
+                        <flux:input
+                            type="file"
+                            wire:model="model"
+                            accept=".vrm,.glb,model/gltf-binary"
+                            :label="__('Body')"
+                            :description="__('A VRM. Kept as it arrived — this server cannot rewrite a model the way it rewrites a picture — and served at your address for spatial places to put you in.')"
+                        />
+
+                        <flux:input
+                            wire:model="name"
+                            :label="__('Alias')"
+                            :placeholder="__('Me')"
+                            :description="__('Nobody else sees this.')"
+                        />
+
+                        @if ($trouble !== '')
+                            <flux:callout variant="danger" icon="exclamation-triangle">
+                                <flux:callout.text>{{ $trouble }}</flux:callout.text>
+                            </flux:callout>
+                        @endif
+
+                        <div class="flex items-center gap-3">
+                            <flux:button type="submit" variant="primary">{{ __('Publish') }}</flux:button>
+                            <flux:text wire:loading wire:target="save" variant="subtle" size="sm">
+                                {{ __('Publishing…') }}
+                            </flux:text>
+                        </div>
+                    </form>
                     </div>
-                </form>
+                </flux:modal>
             </div>
         @endif
     </x-pages::settings.layout>
