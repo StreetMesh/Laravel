@@ -94,6 +94,42 @@ final readonly class Avatars
     }
 
     /**
+     * Every avatar somebody is keeping, newest first.
+     *
+     * The projections rather than the records, because this answers "which of
+     * mine shall I wear" and a record cannot say which one is current. See
+     * `history` for the other question.
+     *
+     * @return Collection<int, Avatar>
+     */
+    public function allFor(string $did): Collection
+    {
+        return Avatar::query()->where('did', $did)->orderByDesc('rkey')->get();
+    }
+
+    /**
+     * Wear this one.
+     *
+     * Exactly one avatar is the one a party draws, so choosing is two writes
+     * and they belong in one transaction -- a moment where a resident has two
+     * default faces is a moment where what everywhere else draws depends on
+     * which row a query happened to reach first.
+     */
+    public function prefer(Avatar $avatar): Avatar
+    {
+        return DB::transaction(function () use ($avatar): Avatar {
+            Avatar::query()
+                ->where('did', $avatar->did)
+                ->whereKeyNot($avatar->getKey())
+                ->update(['is_default' => false]);
+
+            $avatar->forceFill(['is_default' => true])->save();
+
+            return $avatar;
+        });
+    }
+
+    /**
      * Make the index agree with a record.
      *
      * Split out from writing one, because a resident is not the only party who
@@ -104,19 +140,24 @@ final readonly class Avatars
      * the migration's promise true -- every column derived from a record, and
      * every one of them rebuildable by replaying them.
      *
-     * Replacing rather than adding, because a resident may keep one. The record
-     * it was projected from is not replaced: it stays, and so does the one
-     * before it, which is how a person can see what they used to look like.
+     * Adding rather than replacing. A resident keeps every avatar they have
+     * made, which is what the records always described -- each choice writes a
+     * new one and the old ones stand -- and until the pair became unique this
+     * projection was throwing that away one row at a time.
+     *
+     * The new one is worn. Somebody who has just built a face means to be
+     * wearing it, and asking them to then go and select it would be asking
+     * about a decision they have already made.
      */
     public function project(string $did, Record $record): Avatar
     {
-        return Avatar::query()->updateOrCreate(['did' => $did], [
-            'rkey' => $record->rkey,
+        $avatar = Avatar::query()->updateOrCreate(['did' => $did, 'rkey' => $record->rkey], [
             'name' => (string) ($record->value['name'] ?? __('Me')),
             'icon_cid' => self::linkIn($record->value, 'icon') ?? '',
             'model_cid' => self::linkIn($record->value, 'model'),
-            'is_default' => true,
         ]);
+
+        return $this->prefer($avatar);
     }
 
     /**

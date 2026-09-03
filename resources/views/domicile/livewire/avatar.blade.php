@@ -38,6 +38,36 @@ class extends Component
         return $user === null ? null : app(Identities::class)->forUser($user);
     }
 
+    /**
+     * Every avatar this resident keeps, newest first.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, Avatar>
+     */
+    public function wardrobe()
+    {
+        $resident = $this->resident();
+
+        return $resident === null
+            ? new \Illuminate\Database\Eloquent\Collection
+            : app(Avatars::class)->allFor((string) $resident->did);
+    }
+
+    /** Wear one of them. */
+    public function wear(int $id): void
+    {
+        $resident = $this->resident();
+
+        if ($resident === null) {
+            return;
+        }
+
+        $avatar = Avatar::query()->where('did', (string) $resident->did)->find($id);
+
+        if ($avatar !== null) {
+            app(Avatars::class)->prefer($avatar);
+        }
+    }
+
     public function avatar(): ?Avatar
     {
         $resident = $this->resident();
@@ -191,6 +221,44 @@ class extends Component
                         @endif
                     </div>
                 </div>
+
+                @if ($this->wardrobe()->count() > 1)
+                    {{--
+                        The ones already made.
+
+                        Every choice writes a record and the old ones stand, so
+                        a resident who has built four faces has four -- this is
+                        where they pick which one everywhere else draws. The
+                        icons come from the resident's own address rather than
+                        from this page, so what is shown here is what a venue
+                        would fetch.
+                    --}}
+                    <div class="flex flex-col gap-2">
+                        <flux:subheading>{{ __('Yours') }}</flux:subheading>
+
+                        <div class="flex flex-wrap gap-3">
+                            @foreach ($this->wardrobe() as $kept)
+                                <button
+                                    type="button"
+                                    wire:click="wear({{ $kept->id }})"
+                                    class="flex flex-col items-center gap-1"
+                                    title="{{ $kept->name }}"
+                                >
+                                    <flux:avatar
+                                        size="lg"
+                                        circle
+                                        :src="route('streetmesh.blob.get', ['did' => $kept->did, 'cid' => $kept->icon_cid])"
+                                        :name="$kept->name"
+                                        :class="$kept->is_default ? 'ring-2 ring-accent' : 'opacity-60'"
+                                    />
+                                    <flux:text size="sm" :variant="$kept->is_default ? null : 'subtle'">
+                                        {{ $kept->name }}
+                                    </flux:text>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
 
                 <form wire:submit="save" class="flex flex-col gap-4">
                     <flux:input
