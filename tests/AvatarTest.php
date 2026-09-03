@@ -188,18 +188,55 @@ class AvatarTest extends TestCase
      * was citing, so changing your face writes a new one — and the old one
      * standing is how somebody can see what they used to look like.
      */
-    public function test_changing_your_face_writes_a_second_record_and_keeps_the_first(): void
+    public function test_a_resident_keeps_every_avatar_they_have_made(): void
     {
         $alice = $this->alice();
+        $did = (string) $alice->did;
 
         $first = $this->avatars()->adopt($alice, $this->uploaded(120, 60), name: 'Weekday');
         $second = $this->avatars()->adopt($alice, $this->uploaded(90, 90), name: 'Weekend');
 
-        $this->assertCount(2, $this->avatars()->history((string) $alice->did));
-
-        $this->assertSame($first->id, $second->id, 'one avatar per resident, for now');
+        $this->assertCount(2, $this->avatars()->history($did), 'both records stand');
+        $this->assertNotSame($first->id, $second->id, 'and both are kept, not overwritten');
         $this->assertNotSame($first->rkey, $second->rkey);
+
+        $kept = $this->avatars()->allFor($did);
+
+        $this->assertCount(2, $kept);
+        $this->assertSame(['Weekend', 'Weekday'], $kept->pluck('name')->all(), 'newest first');
+    }
+
+    /**
+     * The one just made is the one being worn.
+     *
+     * Somebody who has built a face means to be wearing it; asking them to then
+     * select it would be asking about a decision they have already made.
+     */
+    public function test_the_newest_avatar_is_the_one_that_is_drawn(): void
+    {
+        $alice = $this->alice();
+
+        $this->avatars()->adopt($alice, $this->uploaded(120, 60), name: 'Weekday');
+        $this->avatars()->adopt($alice, $this->uploaded(90, 90), name: 'Weekend');
+
         $this->assertSame('Weekend', $this->avatars()->defaultFor((string) $alice->did)?->name);
+    }
+
+    /**
+     * And exactly one is, however many are kept.
+     */
+    public function test_choosing_an_older_one_puts_it_back_on_and_takes_the_other_off(): void
+    {
+        $alice = $this->alice();
+        $did = (string) $alice->did;
+
+        $weekday = $this->avatars()->adopt($alice, $this->uploaded(120, 60), name: 'Weekday');
+        $this->avatars()->adopt($alice, $this->uploaded(90, 90), name: 'Weekend');
+
+        $this->avatars()->prefer($weekday->fresh());
+
+        $this->assertSame('Weekday', $this->avatars()->defaultFor($did)?->name);
+        $this->assertSame(1, $this->avatars()->allFor($did)->where('is_default', true)->count());
     }
 
     public function test_somebody_who_has_chosen_nothing_has_no_avatar(): void
