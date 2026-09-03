@@ -248,18 +248,14 @@ class extends Component
 
                 @if ($this->wardrobe()->isNotEmpty())
                     {{--
-                        The ones already made.
-
                         Every choice writes a record and the old ones stand, so
-                        somebody who has built four faces has four. Each icon is
+                        somebody who has made four avatars has four. Each icon is
                         fetched by its own content name rather than from
                         `/avatar/icon`, which always answers with whichever is
                         current -- every thumbnail would otherwise be the same
                         face under four different labels.
                     --}}
                     <div class="flex flex-col gap-2">
-                        <flux:subheading>{{ __('Yours') }}</flux:subheading>
-
                         <div class="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-700">
                             @foreach ($this->wardrobe() as $kept)
                                 <div class="flex items-center gap-3 py-3">
@@ -290,21 +286,21 @@ class extends Component
                                     </div>
 
                                     @if ($kept->is_default)
-                                        <flux:badge size="sm" color="lime">{{ __('Worn') }}</flux:badge>
+                                        <flux:badge size="sm" color="lime">{{ __('Default') }}</flux:badge>
                                     @else
                                         <flux:button size="sm" wire:click="wear({{ $kept->id }})">
-                                            {{ __('Wear') }}
+                                            {{ __('Make default') }}
                                         </flux:button>
                                     @endif
 
-                                    {{-- Soft: the record stands, and so does the picture. What is
-                                         being discarded is this resident's own shortlist. --}}
+                                    {{-- Soft. The record and the picture it names both stand;
+                                         what is removed is this list. --}}
                                     <flux:button
                                         size="sm"
                                         variant="subtle"
                                         icon="trash"
                                         wire:click="discard({{ $kept->id }})"
-                                        wire:confirm="{{ __('Put this avatar away? Your record of it is kept either way.') }}"
+                                        wire:confirm="{{ __('Delete this avatar?') }}"
                                     />
                                 </div>
                             @endforeach
