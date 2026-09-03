@@ -11,11 +11,13 @@ use StreetMesh\Server\Domicile\Avatars\Avatars;
 use StreetMesh\Server\Domicile\Avatars\Icon;
 use StreetMesh\Server\Domicile\Residents\Handle;
 use StreetMesh\Server\Domicile\Residents\Residents;
+use StreetMesh\Server\Protocol\Blobs\Blob;
 use StreetMesh\Server\Protocol\Blobs\BlobStore;
 use StreetMesh\Server\Protocol\Capabilities\Capabilities;
 use StreetMesh\Server\Protocol\Identity\Identities;
 use StreetMesh\Server\Protocol\Identity\Identity;
 use StreetMesh\Server\Protocol\Records\Record;
+use StreetMesh\Server\Protocol\Records\RecordStore;
 use StreetMesh\Server\Tests\Fixtures\Resident;
 
 /**
@@ -242,6 +244,126 @@ class AvatarTest extends TestCase
     public function test_somebody_who_has_chosen_nothing_has_no_avatar(): void
     {
         $this->assertNull($this->avatars()->defaultFor((string) $this->alice()->did));
+    }
+
+    // ── The wardrobe ────────────────────────────────────────────────────────
+
+    /**
+     * Put away, not destroyed.
+     *
+     * A record is written once and stands forever, so the only thing a resident
+     * can discard is their own shortlist. The record stays, which is what makes
+     * the projection rebuildable.
+     */
+    public function test_discarding_an_avatar_leaves_the_record_it_came_from(): void
+    {
+        $alice = $this->alice();
+        $did = (string) $alice->did;
+
+        $weekday = $this->avatars()->adopt($alice, $this->uploaded(120, 60), name: 'Weekday');
+        $this->avatars()->adopt($alice, $this->uploaded(90, 90), name: 'Weekend');
+
+        $this->avatars()->discard($weekday->fresh());
+
+        $this->assertCount(1, $this->avatars()->allFor($did), 'gone from the wardrobe');
+        $this->assertCount(2, $this->avatars()->history($did), 'and still in the history');
+    }
+
+    /**
+     * Tidying up must not leave somebody with no face.
+     */
+    public function test_discarding_the_one_being_worn_puts_on_what_is_left(): void
+    {
+        $alice = $this->alice();
+        $did = (string) $alice->did;
+
+        $this->avatars()->adopt($alice, $this->uploaded(120, 60), name: 'Weekday');
+        $weekend = $this->avatars()->adopt($alice, $this->uploaded(90, 90), name: 'Weekend');
+
+        $this->assertSame('Weekend', $this->avatars()->defaultFor($did)?->name);
+
+        $this->avatars()->discard($weekend->fresh());
+
+        $this->assertSame('Weekday', $this->avatars()->defaultFor($did)?->name);
+    }
+
+    public function test_discarding_the_last_one_leaves_nothing_rather_than_something_wrong(): void
+    {
+        $alice = $this->alice();
+        $only = $this->avatars()->adopt($alice, $this->uploaded());
+
+        $this->avatars()->discard($only->fresh());
+
+        $this->assertNull($this->avatars()->defaultFor((string) $alice->did));
+        $this->askHost('alice.home.test')->assertOk();
+    }
+
+    /**
+     * The same record arriving again is the same avatar arriving again.
+     */
+    public function test_a_record_written_again_comes_back_out_of_the_wardrobe(): void
+    {
+        $alice = $this->alice();
+        $did = (string) $alice->did;
+
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded());
+        $record = $this->avatars()->history($did)->first();
+
+        $this->avatars()->discard($avatar->fresh());
+        $this->assertCount(0, $this->avatars()->allFor($did));
+
+        $this->avatars()->project($did, $record);
+
+        $this->assertCount(1, $this->avatars()->allFor($did));
+    }
+
+    /**
+     * Somewhere to go back to and build another.
+     *
+     * A did:web is a hostname with a prefix, which is the whole of what makes
+     * one resolvable — and what makes this a link rather than an identifier.
+     */
+    public function test_an_avatar_says_where_it_was_built_when_a_venue_built_it(): void
+    {
+        $alice = $this->alice();
+        $blob = $this->heldPng((string) $alice->did);
+
+        $record = $this->app->make(RecordStore::class)->put((string) $alice->did, Avatars::COLLECTION, [
+            'name' => 'From a venue',
+            'icon' => $blob->reference(),
+            'createdAt' => now()->toIso8601ZuluString(),
+            'writtenBy' => 'did:web:avatars.streetmesh.com',
+        ]);
+
+        $avatar = $this->avatars()->project((string) $alice->did, $record);
+
+        $this->assertSame('https://avatars.streetmesh.com', $avatar->builtAt());
+    }
+
+    /** And says nothing when nobody else was involved. */
+    public function test_an_avatar_uploaded_here_names_no_venue(): void
+    {
+        $avatar = $this->avatars()->adopt($this->alice(), $this->uploaded());
+
+        $this->assertNull($avatar->builtAt());
+    }
+
+    private function heldPng(string $did): Blob
+    {
+        return $this->app->make(BlobStore::class)
+            ->put($did, $this->pngBytes(), Avatars::COLLECTION);
+    }
+
+    private function pngBytes(): string
+    {
+        $canvas = imagecreatetruecolor(4, 4);
+
+        ob_start();
+        imagepng($canvas);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($canvas);
+
+        return $bytes;
     }
 
     // ── What the address answers ────────────────────────────────────────────
