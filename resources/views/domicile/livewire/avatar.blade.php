@@ -285,6 +285,18 @@ class extends Component
                                         @endif
                                     </div>
 
+                                    {{-- Back to where it was made, with this one as the
+                                         starting point. Only when the venue offered an
+                                         address and that address leads back to the venue
+                                         already named on this row -- see `editableAt()`. --}}
+                                    @if ($kept->editableAt() !== null)
+                                        <flux:button
+                                            :href="$kept->editableAt()"
+                                            size="sm"
+                                            variant="ghost"
+                                        >{{ __('Start from this') }}</flux:button>
+                                    @endif
+
                                     @if ($kept->is_default)
                                         <flux:badge size="sm" color="lime">{{ __('Default') }}</flux:badge>
                                     @else

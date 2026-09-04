@@ -23,6 +23,7 @@ use StreetMesh\Server\Protocol\Blobs\BlobStore;
  * @property string|null $model_cid
  * @property bool $is_default
  * @property string|null $written_by
+ * @property string|null $editable_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
@@ -64,6 +65,35 @@ class Avatar extends Model
         return str_starts_with($did, 'did:web:')
             ? 'https://'.substr($did, strlen('did:web:'))
             : null;
+    }
+
+    /**
+     * Where this may be opened again and changed, or null.
+     *
+     * Checked against the venue that wrote the record, and not merely passed
+     * through. This is a URL one party put into another party's repository, and
+     * it is rendered as a link in that person's own settings -- a venue that
+     * could put any address there could put one that only looks like itself.
+     * So it is offered when, and only when, it leads back to the venue whose
+     * name is already on the row.
+     *
+     * A mismatch is silently nothing rather than an error. The avatar is still
+     * perfectly good and the resident has nothing to fix; there is simply no
+     * offer to make about it.
+     */
+    public function editableAt(): ?string
+    {
+        $offered = (string) $this->editable_at;
+        $builder = $this->builtAt();
+
+        if ($offered === '' || $builder === null) {
+            return null;
+        }
+
+        return parse_url($offered, PHP_URL_SCHEME) === 'https'
+            && parse_url($offered, PHP_URL_HOST) === parse_url($builder, PHP_URL_HOST)
+                ? $offered
+                : null;
     }
 
     /**
