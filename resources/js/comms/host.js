@@ -97,7 +97,19 @@ import mesh from './mesh.js'
         const dark = document.documentElement.classList.contains('dark')
 
         for (const surface of [badge, panel, stage]) {
-            surface.contentDocument?.documentElement.classList.toggle('dark', dark)
+            /*
+             * Both steps are optional, and the second one is the one that bit.
+             *
+             * A frame reports a `contentDocument` before that document has an
+             * `<html>` in it, so guarding only the document left this throwing
+             * on the `load` of a frame that was not finished. It threw *into*
+             * whatever was booting alongside it: a Unity player on the same
+             * page listens for `error` on window while it starts and treats
+             * anything it hears as its own failure, so a missing null check
+             * here read to a visitor as "the builder would not start", and
+             * intermittently, since it depended on which finished first.
+             */
+            surface.contentDocument?.documentElement?.classList.toggle('dark', dark)
         }
     }
 
