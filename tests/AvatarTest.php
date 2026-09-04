@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use StreetMesh\Protocol\Cid;
+use StreetMesh\Server\Domicile\Avatars\Avatar;
 use StreetMesh\Server\Domicile\Avatars\Avatars;
 use StreetMesh\Server\Domicile\Avatars\Icon;
 use StreetMesh\Server\Domicile\Residents\Handle;
@@ -338,6 +339,62 @@ class AvatarTest extends TestCase
         $avatar = $this->avatars()->project((string) $alice->did, $record);
 
         $this->assertSame('https://avatars.streetmesh.com', $avatar->builtAt());
+    }
+
+    /**
+     * A venue may offer somewhere to open an avatar again, and it is projected.
+     */
+    public function test_an_avatar_can_say_where_it_may_be_opened_again(): void
+    {
+        $avatar = $this->builtByVenue('https://avatars.streetmesh.com/experiences/builder?from=bafk');
+
+        $this->assertSame(
+            'https://avatars.streetmesh.com/experiences/builder?from=bafk',
+            $avatar->editableAt(),
+        );
+    }
+
+    /**
+     * But only back to the venue whose name is already on the row.
+     *
+     * This is a URL one party writes into another party's repository and the
+     * holder's own settings render it as a link, so a venue that could name any
+     * address could name one that merely looks like itself. Nothing about the
+     * avatar is wrong when it does; there is simply no offer to make.
+     */
+    public function test_an_avatar_will_not_offer_a_link_somewhere_else(): void
+    {
+        $this->assertNull($this->builtByVenue('https://phishing.example/experiences/builder')->editableAt());
+    }
+
+    /** Nor over a scheme that is not https. */
+    public function test_an_avatar_will_not_offer_an_insecure_link(): void
+    {
+        $this->assertNull($this->builtByVenue('http://avatars.streetmesh.com/experiences/builder')->editableAt());
+    }
+
+    /** And an avatar nobody else wrote has nowhere to send anybody. */
+    public function test_an_avatar_uploaded_here_offers_nowhere_to_edit(): void
+    {
+        $avatar = $this->avatars()->adopt($this->alice(), $this->uploaded());
+
+        $this->assertNull($avatar->editableAt());
+    }
+
+    private function builtByVenue(string $editableAt): Avatar
+    {
+        $alice = $this->alice();
+        $blob = $this->heldPng((string) $alice->did);
+
+        $record = $this->app->make(RecordStore::class)->put((string) $alice->did, Avatars::COLLECTION, [
+            'name' => 'From a venue',
+            'icon' => $blob->reference(),
+            'createdAt' => now()->toIso8601ZuluString(),
+            'writtenBy' => 'did:web:avatars.streetmesh.com',
+            'editableAt' => $editableAt,
+        ]);
+
+        return $this->avatars()->project((string) $alice->did, $record);
     }
 
     /** And says nothing when nobody else was involved. */

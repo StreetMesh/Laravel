@@ -192,6 +192,15 @@ final readonly class Avatars
             'model_cid' => self::linkIn($record->value, 'model'),
 
             /*
+             * Where the venue says this may be opened again. Stored as it
+             * arrived; whether it is fit to show anybody is decided when it is
+             * shown, because the answer depends on who wrote the record.
+             */
+            'editable_at' => isset($record->value['editableAt'])
+                ? (string) $record->value['editableAt']
+                : null,
+
+            /*
              * Which venue carried it, when one did. Set by the endpoint that
              * received it, and absent on an avatar a resident uploaded
              * themselves -- there was nobody else involved in that one.
