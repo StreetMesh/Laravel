@@ -273,10 +273,21 @@ class extends Component
                                             {{-- Where it was made, taken from the claim itself. A
                                                  did:web is a hostname with a prefix, which is what
                                                  makes it somewhere to go back to rather than an
-                                                 identifier to look at. --}}
+                                                 identifier to look at.
+
+                                                 And, when the venue offered one, the way back in
+                                                 with this avatar already on the stage. The name of
+                                                 the place and the door into it were two things on
+                                                 this row, and a button beside a link to the same
+                                                 venue is one thing too many.
+
+                                                 The label still names the venue rather than the
+                                                 address behind it, and cannot be made to lie by it:
+                                                 `editableAt()` only answers for a URL on the host
+                                                 this row already names. --}}
                                             <flux:text size="sm" variant="subtle">
                                                 {{ __('Built at') }}
-                                                <flux:link :href="$kept->builtAt()" external>
+                                                <flux:link :href="$kept->editableAt() ?? $kept->builtAt()" external>
                                                     {{ parse_url($kept->builtAt(), PHP_URL_HOST) }}
                                                 </flux:link>
                                             </flux:text>
@@ -284,18 +295,6 @@ class extends Component
                                             <flux:text size="sm" variant="subtle">{{ __('Uploaded here') }}</flux:text>
                                         @endif
                                     </div>
-
-                                    {{-- Back to where it was made, with this one as the
-                                         starting point. Only when the venue offered an
-                                         address and that address leads back to the venue
-                                         already named on this row -- see `editableAt()`. --}}
-                                    @if ($kept->editableAt() !== null)
-                                        <flux:button
-                                            :href="$kept->editableAt()"
-                                            size="sm"
-                                            variant="ghost"
-                                        >{{ __('Start from this') }}</flux:button>
-                                    @endif
 
                                     @if ($kept->is_default)
                                         <flux:badge size="sm" color="lime">{{ __('Default') }}</flux:badge>
