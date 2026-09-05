@@ -381,6 +381,41 @@ class AvatarTest extends TestCase
         $this->assertNull($avatar->editableAt());
     }
 
+    /**
+     * The venue's name on a row is the way back into it.
+     *
+     * It used to be a link to the venue's front page beside a button that went
+     * back to the avatar -- two controls pointing at one place, one of which
+     * threw away the thing the row is about. `editableAt()` only answers for a
+     * URL on the host the row already names, so the label still tells the truth
+     * about where following it goes.
+     */
+    public function test_the_venue_named_on_a_row_leads_back_to_the_avatar(): void
+    {
+        $this->builtByVenue('https://avatars.streetmesh.com/experiences/builder?from=bafk');
+
+        $this->actingAs(Resident::where('email', 'alice@home.test')->firstOrFail())
+            ->get('https://home.test/settings/avatar')
+            ->assertOk()
+            ->assertSee('avatars.streetmesh.com/experiences/builder?from=bafk', escape: false)
+            ->assertDontSee('Start from this');
+    }
+
+    /**
+     * And a venue that offered nowhere to go back to is still named, and still
+     * leads to itself.
+     */
+    public function test_a_venue_that_offered_nothing_is_still_a_link_to_the_venue(): void
+    {
+        $this->builtByVenue('https://phishing.example/experiences/builder');
+
+        $this->actingAs(Resident::where('email', 'alice@home.test')->firstOrFail())
+            ->get('https://home.test/settings/avatar')
+            ->assertOk()
+            ->assertSee('href="https://avatars.streetmesh.com"', escape: false)
+            ->assertDontSee('phishing.example');
+    }
+
     private function builtByVenue(string $editableAt): Avatar
     {
         $alice = $this->alice();
