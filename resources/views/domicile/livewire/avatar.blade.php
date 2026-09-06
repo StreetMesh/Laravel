@@ -409,51 +409,46 @@ class extends Component
                                         asks the same thing from somewhere else on the
                                         screen, in a voice that is not this page's.
 
-                                        The same quiet button throughout, only its icon
-                                        changing. A filled red block in a row of bare
-                                        icons is a different kind of control appearing
-                                        where there was none, which is louder than the
-                                        moment deserves and moves everything beside it.
+                                        An icon and nothing else. A button's chrome --
+                                        its padding, its hover fill, the box it reserves
+                                        -- is a frame around a question this small does
+                                        not need, and a filled one appearing where a
+                                        bare icon was moves everything beside it. Still
+                                        a real button underneath, because it is one: it
+                                        must be reachable by a keyboard and announce
+                                        itself to a reader.
 
-                                        Heroicons has no open bin, so this one is drawn
+                                        Heroicons has no open bin, so that one is drawn
                                         here -- the same body, with the lid tipped off.
                                     --}}
-                                    @if ($this->deleting === $kept->id)
-                                        <div
+                                    @php($armed = $this->deleting === $kept->id)
+
+                                    <button
+                                        type="button"
+                                        wire:click="discard({{ $kept->id }})"
+                                        @if ($armed)
                                             wire:key="arming-{{ $kept->id }}"
                                             x-data
                                             x-init="setTimeout(() => $wire.set('deleting', null), 5000)"
-                                        >
-                                            <flux:button
-                                                size="sm"
-                                                variant="subtle"
-                                                square
-                                                wire:click="discard({{ $kept->id }})"
-                                                :title="__('Press again to delete')"
-                                            >
-                                                <svg
-                                                    class="size-4 text-red-600 dark:text-red-400"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                    aria-hidden="true"
-                                                >
-                                                    <g transform="rotate(-18 10 5.4)">
-                                                        <rect x="3.6" y="4.35" width="12.8" height="2.1" rx="1.05" />
-                                                        <rect x="8.1" y="2.1" width="3.8" height="1.7" rx=".85" />
-                                                    </g>
-                                                    <path d="M5.6 8.4h8.8l-.7 8.05A2 2 0 0 1 11.71 18.3H8.29a2 2 0 0 1-1.99-1.85L5.6 8.4Z" />
-                                                </svg>
-                                            </flux:button>
-                                        </div>
-                                    @else
-                                        <flux:button
-                                            size="sm"
-                                            variant="subtle"
-                                            icon="trash"
-                                            wire:click="discard({{ $kept->id }})"
-                                            :title="__('Delete this avatar')"
-                                        />
-                                    @endif
+                                        @endif
+                                        title="{{ $armed ? __('Press again to delete') : __('Delete this avatar') }}"
+                                        aria-label="{{ $armed ? __('Press again to delete') : __('Delete this avatar') }}"
+                                        class="inline-flex shrink-0 cursor-pointer items-center transition {{ $armed
+                                            ? 'text-red-600 dark:text-red-400'
+                                            : 'text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300' }}"
+                                    >
+                                        @if ($armed)
+                                            <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <g transform="rotate(-18 10 5.4)">
+                                                    <rect x="3.6" y="4.35" width="12.8" height="2.1" rx="1.05" />
+                                                    <rect x="8.1" y="2.1" width="3.8" height="1.7" rx=".85" />
+                                                </g>
+                                                <path d="M5.6 8.4h8.8l-.7 8.05A2 2 0 0 1 11.71 18.3H8.29a2 2 0 0 1-1.99-1.85L5.6 8.4Z" />
+                                            </svg>
+                                        @else
+                                            <flux:icon.trash variant="micro" />
+                                        @endif
+                                    </button>
                                 </div>
                             @endforeach
                         </div>

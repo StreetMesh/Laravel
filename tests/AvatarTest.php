@@ -537,6 +537,9 @@ class AvatarTest extends TestCase
          */
         $screen->assertSeeHtml('text-red-600');
 
+        // An icon and nothing else: no Flux button wrapping it, in either state.
+        $screen->assertSeeHtml('aria-label="Press again to delete"');
+
         $screen->call('discard', $avatar->id)->assertSet('deleting', null);
 
         $this->assertCount(0, $this->avatars()->allFor((string) $alice->did), 'gone after the second');
