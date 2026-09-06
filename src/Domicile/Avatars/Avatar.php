@@ -19,6 +19,7 @@ use StreetMesh\Server\Protocol\Blobs\BlobStore;
  * @property string $did
  * @property string $rkey
  * @property string $name
+ * @property string|null $alias
  * @property string $icon_cid
  * @property string|null $model_cid
  * @property bool $is_default
@@ -94,6 +95,19 @@ class Avatar extends Model
             && parse_url($offered, PHP_URL_HOST) === parse_url($builder, PHP_URL_HOST)
                 ? $offered
                 : null;
+    }
+
+    /**
+     * What to call this one on screen.
+     *
+     * The record's word unless its holder has chosen another. A name is theirs
+     * to change and nobody else's to read -- the lexicon says as much: "for
+     * choosing between their own", "not shown to anybody else" -- so renaming
+     * one is a note in a wardrobe rather than a new claim about a face.
+     */
+    public function called(): string
+    {
+        return $this->alias === null || $this->alias === '' ? $this->name : $this->alias;
     }
 
     /**

@@ -24,6 +24,11 @@ class extends Component
 
     public string $name = '';
 
+    /** Which avatar the rename box is open for, and what it says. */
+    public ?int $renaming = null;
+
+    public string $renamed = '';
+
     public string $trouble = '';
 
     /**
@@ -62,6 +67,46 @@ class extends Component
         if ($avatar !== null) {
             app(Avatars::class)->prefer($avatar);
         }
+    }
+
+    /**
+     * Open the rename box on one of them.
+     *
+     * Seeded with what it is called now rather than left empty, so renaming is
+     * an edit of a word that is already there and clearing the box is a way of
+     * asking for the record's own back.
+     */
+    public function beginRename(int $id): void
+    {
+        $avatar = $this->mine($id);
+
+        if ($avatar === null) {
+            return;
+        }
+
+        $this->renaming = $id;
+        $this->renamed = $avatar->called();
+        $this->trouble = '';
+    }
+
+    /** Call it something else. The record keeps the name it was written with. */
+    public function rename(): void
+    {
+        $avatar = $this->renaming === null ? null : $this->mine($this->renaming);
+
+        if ($avatar === null) {
+            return;
+        }
+
+        $this->validate(['renamed' => ['nullable', 'string', 'max:64']]);
+
+        app(Avatars::class)->rename($avatar, $this->renamed);
+
+        $this->renaming = null;
+        $this->renamed = '';
+
+        // Otherwise it sits there over the row it has just renamed.
+        Flux::modal('rename-avatar')->close();
     }
 
     /** Put one away. The record stands; this is the wardrobe, not the history. */
@@ -263,11 +308,11 @@ class extends Component
                                         size="lg"
                                         circle
                                         :src="route('streetmesh.blob.get', ['did' => $kept->did, 'cid' => $kept->icon_cid])"
-                                        :name="$kept->name"
+                                        :name="$kept->called()"
                                     />
 
                                     <div class="flex min-w-0 flex-1 flex-col">
-                                        <flux:text class="font-medium">{{ $kept->name }}</flux:text>
+                                        <flux:text class="font-medium">{{ $kept->called() }}</flux:text>
 
                                         @if ($kept->builtAt() !== null)
                                             {{-- Where it was made, taken from the claim itself. A
@@ -304,6 +349,17 @@ class extends Component
                                         </flux:button>
                                     @endif
 
+                                    {{-- A name is the holder's own, so changing it changes
+                                         nothing anybody else can read. --}}
+                                    <flux:modal.trigger name="rename-avatar">
+                                        <flux:button
+                                            size="sm"
+                                            variant="subtle"
+                                            icon="pencil-square"
+                                            wire:click="beginRename({{ $kept->id }})"
+                                        />
+                                    </flux:modal.trigger>
+
                                     {{-- Soft. The record and the picture it names both stand;
                                          what is removed is this list. --}}
                                     <flux:button
@@ -332,6 +388,41 @@ class extends Component
                         <flux:button icon="plus" variant="primary">{{ __('Add an avatar') }}</flux:button>
                     </flux:modal.trigger>
                 </div>
+
+                {{--
+                    Renaming, which is a note in a wardrobe rather than a claim.
+
+                    One modal for every row rather than one per row: which avatar
+                    it is about is held by the component, set when the box was
+                    opened and scoped to this resident on the way in and again on
+                    the way out.
+                --}}
+                <flux:modal name="rename-avatar" class="md:w-[28rem]" wire:close="$set('renaming', null)">
+                    <form wire:submit="rename" class="flex flex-col gap-6">
+                        <div>
+                            <flux:heading size="lg">{{ __('Rename') }}</flux:heading>
+                            <flux:text class="mt-2">
+                                {{ __('Only you see this. It is how you tell your own avatars apart.') }}
+                            </flux:text>
+                        </div>
+
+                        <flux:input
+                            wire:model="renamed"
+                            :label="__('Name')"
+                            :placeholder="__('Me')"
+                            :description="__('Leave it empty to go back to the name it was given.')"
+                            maxlength="64"
+                        />
+
+                        <div class="flex items-center justify-end gap-3">
+                            <flux:modal.close>
+                                <flux:button variant="filled">{{ __('Cancel') }}</flux:button>
+                            </flux:modal.close>
+
+                            <flux:button type="submit" variant="primary">{{ __('Rename') }}</flux:button>
+                        </div>
+                    </form>
+                </flux:modal>
 
                 <flux:modal name="new-avatar" class="md:w-[32rem]">
                     <div class="flex flex-col gap-6">
