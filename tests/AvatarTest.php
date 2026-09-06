@@ -492,6 +492,85 @@ class AvatarTest extends TestCase
     }
 
     /**
+     * The badge for the one being worn is the screen's own dark, not a green.
+     *
+     * Wearing one is not a success or a warning; it is simply which of them is
+     * on. `bg-accent` is what every settled control on these screens uses, and
+     * it follows the theme -- near black on a light page, white on a dark one --
+     * where a literal black would disappear into the second.
+     */
+    public function test_the_worn_one_is_badged_in_the_screens_own_colour(): void
+    {
+        $alice = $this->alice();
+        $this->avatars()->adopt($alice, $this->uploaded());
+
+        $this->actingAs(Resident::where('email', 'alice@home.test')->firstOrFail());
+
+        Livewire::test('domicile::avatar')
+            ->assertSeeHtml('bg-accent!')
+            ->assertDontSeeHtml('bg-lime');
+    }
+
+    /**
+     * The bin asks before it empties.
+     *
+     * One press arms it and the next one deletes. Nothing on this screen offers
+     * a way back from a discard, so a mis-aimed click beside the rename button
+     * should cost a second click rather than an avatar.
+     */
+    public function test_deleting_takes_two_presses(): void
+    {
+        $alice = $this->alice();
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded());
+
+        $this->actingAs(Resident::where('email', 'alice@home.test')->firstOrFail());
+
+        $screen = Livewire::test('domicile::avatar')->call('discard', $avatar->id);
+
+        $screen->assertSet('deleting', $avatar->id);
+        $this->assertCount(1, $this->avatars()->allFor((string) $alice->did), 'still there after one press');
+
+        $screen->call('discard', $avatar->id)->assertSet('deleting', null);
+
+        $this->assertCount(0, $this->avatars()->allFor((string) $alice->did), 'gone after the second');
+    }
+
+    /**
+     * And arming one disarms another: two open bins is two chances to be wrong.
+     */
+    public function test_arming_one_bin_closes_the_other(): void
+    {
+        $alice = $this->alice();
+        $first = $this->avatars()->adopt($alice, $this->uploaded());
+        $second = $this->avatars()->adopt($alice, $this->uploaded());
+
+        $this->actingAs(Resident::where('email', 'alice@home.test')->firstOrFail());
+
+        Livewire::test('domicile::avatar')
+            ->call('discard', $first->id)
+            ->assertSet('deleting', $first->id)
+            ->call('discard', $second->id)
+            ->assertSet('deleting', $second->id);
+
+        $this->assertCount(2, $this->avatars()->allFor((string) $alice->did), 'neither was deleted');
+    }
+
+    /** Wearing or renaming puts the lid back on. */
+    public function test_doing_anything_else_closes_the_bin(): void
+    {
+        $alice = $this->alice();
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded());
+
+        $this->actingAs(Resident::where('email', 'alice@home.test')->firstOrFail());
+
+        Livewire::test('domicile::avatar')
+            ->call('discard', $avatar->id)
+            ->assertSet('deleting', $avatar->id)
+            ->call('wear', $avatar->id)
+            ->assertSet('deleting', null);
+    }
+
+    /**
      * The id is in the markup and the markup is somebody's browser.
      *
      * So the screen scopes by DID on the way in and again on the way out, and a

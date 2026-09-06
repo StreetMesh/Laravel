@@ -24,6 +24,15 @@ class extends Component
 
     public string $name = '';
 
+    /**
+     * Which avatar has been asked about but not yet deleted.
+     *
+     * Discarding is soft and reversible in principle, but nothing on this screen
+     * offers to reverse it -- so it asks. One button that changes its mind
+     * rather than a dialog: the answer is on the finger that asked.
+     */
+    public ?int $deleting = null;
+
     /** Which avatar the rename box is open for, and what it says. */
     public ?int $renaming = null;
 
@@ -62,6 +71,8 @@ class extends Component
     /** Wear one of them. */
     public function wear(int $id): void
     {
+        $this->deleting = null;
+
         $avatar = $this->mine($id);
 
         if ($avatar !== null) {
@@ -84,6 +95,7 @@ class extends Component
             return;
         }
 
+        $this->deleting = null;
         $this->renaming = $id;
         $this->renamed = $avatar->called();
         $this->trouble = '';
@@ -109,14 +121,33 @@ class extends Component
         Flux::modal('rename-avatar')->close();
     }
 
-    /** Put one away. The record stands; this is the wardrobe, not the history. */
+    /**
+     * Put one away, on the second ask.
+     *
+     * The record stands; this is the wardrobe, not the history. But a resident
+     * who meant to rename and hit the bin has no way back from here, so the
+     * first press opens the lid and the second empties it.
+     *
+     * Armed per avatar rather than as a flag, so arming one disarms any other:
+     * two open bins on a screen is two invitations to press the wrong one.
+     */
     public function discard(int $id): void
     {
         $avatar = $this->mine($id);
 
-        if ($avatar !== null) {
-            app(Avatars::class)->discard($avatar);
+        if ($avatar === null) {
+            return;
         }
+
+        if ($this->deleting !== $id) {
+            $this->deleting = $id;
+
+            return;
+        }
+
+        $this->deleting = null;
+
+        app(Avatars::class)->discard($avatar);
     }
 
     /**
@@ -341,8 +372,16 @@ class extends Component
                                         @endif
                                     </div>
 
+                                    {{-- Solid rather than lime. Wearing one is not a
+                                         success or a warning, it is simply which one
+                                         is on -- and the screen's other settled
+                                         states are dark. --}}
                                     @if ($kept->is_default)
-                                        <flux:badge size="sm" color="lime">{{ __('Default') }}</flux:badge>
+                                        <flux:badge
+                                            size="sm"
+                                            variant="solid"
+                                            class="bg-accent! text-accent-foreground!"
+                                        >{{ __('Default') }}</flux:badge>
                                     @else
                                         <flux:button size="sm" wire:click="wear({{ $kept->id }})">
                                             {{ __('Make default') }}
@@ -360,15 +399,50 @@ class extends Component
                                         />
                                     </flux:modal.trigger>
 
-                                    {{-- Soft. The record and the picture it names both stand;
-                                         what is removed is this list. --}}
-                                    <flux:button
-                                        size="sm"
-                                        variant="subtle"
-                                        icon="trash"
-                                        wire:click="discard({{ $kept->id }})"
-                                        wire:confirm="{{ __('Delete this avatar?') }}"
-                                    />
+                                    {{--
+                                        Soft. The record and the picture it names both
+                                        stand; what is removed is this list.
+
+                                        Asked twice, and the button is the question: the
+                                        first press takes the lid off and the second
+                                        empties it. A browser confirm dialog asks the
+                                        same thing from somewhere else on the screen,
+                                        in a voice that is not this page's.
+
+                                        Heroicons has no open bin, so this one is drawn
+                                        here -- the same body, with the lid tipped off.
+                                    --}}
+                                    @if ($this->deleting === $kept->id)
+                                        <div
+                                            wire:key="arming-{{ $kept->id }}"
+                                            x-data
+                                            x-init="setTimeout(() => $wire.set('deleting', null), 5000)"
+                                        >
+                                            <flux:button
+                                                size="sm"
+                                                variant="danger"
+                                                square
+                                                wire:click="discard({{ $kept->id }})"
+                                                :title="__('Press again to delete')"
+                                            >
+                                                <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                    <g transform="rotate(-18 10 5.4)">
+                                                        <rect x="3.6" y="4.35" width="12.8" height="2.1" rx="1.05" />
+                                                        <rect x="8.1" y="2.1" width="3.8" height="1.7" rx=".85" />
+                                                    </g>
+                                                    <path d="M5.6 8.4h8.8l-.7 8.05A2 2 0 0 1 11.71 18.3H8.29a2 2 0 0 1-1.99-1.85L5.6 8.4Z" />
+                                                </svg>
+                                            </flux:button>
+                                        </div>
+                                    @else
+                                        <flux:button
+                                            size="sm"
+                                            variant="subtle"
+                                            icon="trash"
+                                            wire:click="discard({{ $kept->id }})"
+                                            :title="__('Delete this avatar')"
+                                        />
+                                    @endif
                                 </div>
                             @endforeach
                         </div>
