@@ -420,6 +420,15 @@ class extends Component
 
                                         Heroicons has no open bin, so that one is drawn
                                         here -- the same body, with the lid tipped off.
+
+                                        On a 16 unit box, which is the one the micro
+                                        variant beside it uses. It was drawn on a 20 unit
+                                        box first and looked a size smaller for it: both
+                                        render into the same 16 pixels, so a drawing that
+                                        fills less of its own box arrives smaller. Matched
+                                        by measuring rather than by eye -- the two now
+                                        cover the same width to the pixel, and within a
+                                        few per cent of the same ink.
                                     --}}
                                     @php($armed = $this->deleting === $kept->id)
 
@@ -438,12 +447,12 @@ class extends Component
                                             : 'text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300' }}"
                                     >
                                         @if ($armed)
-                                            <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                                <g transform="rotate(-18 10 5.4)">
-                                                    <rect x="3.6" y="4.35" width="12.8" height="2.1" rx="1.05" />
-                                                    <rect x="8.1" y="2.1" width="3.8" height="1.7" rx=".85" />
+                                            <svg class="size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                                <g transform="rotate(-17 8 4.2)">
+                                                    <rect x="1.75" y="3.2" width="12.5" height="2" rx="1" />
+                                                    <rect x="6.05" y="1" width="3.9" height="1.7" rx=".85" />
                                                 </g>
-                                                <path d="M5.6 8.4h8.8l-.7 8.05A2 2 0 0 1 11.71 18.3H8.29a2 2 0 0 1-1.99-1.85L5.6 8.4Z" />
+                                                <path d="M3.05 6.75h9.9l-.68 7.05A1.5 1.5 0 0 1 10.78 15.15H5.22a1.5 1.5 0 0 1-1.49-1.35L3.05 6.75Z" />
                                             </svg>
                                         @else
                                             <flux:icon.trash variant="micro" />
