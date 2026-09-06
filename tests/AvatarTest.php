@@ -5,6 +5,7 @@ namespace StreetMesh\Server\Tests;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
+use Livewire\Livewire;
 use RuntimeException;
 use StreetMesh\Protocol\Cid;
 use StreetMesh\Server\Domicile\Avatars\Avatar;
@@ -414,6 +415,106 @@ class AvatarTest extends TestCase
             ->assertOk()
             ->assertSee('href="https://avatars.streetmesh.com"', escape: false)
             ->assertDontSee('phishing.example');
+    }
+
+    /**
+     * A name is the holder's own, so changing it changes only the wardrobe.
+     *
+     * The record keeps the name it was written with and is still what the row
+     * is rebuilt from, which is the promise the projection was built on.
+     */
+    public function test_a_resident_can_call_one_of_their_own_something_else(): void
+    {
+        $alice = $this->alice();
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded(), null, 'From a venue');
+
+        $this->avatars()->rename($avatar, 'Weekday');
+
+        $this->assertSame('Weekday', $avatar->fresh()->called());
+        $this->assertSame('From a venue', $avatar->fresh()->name, 'the record is untouched');
+    }
+
+    /** And clearing it asks for the record's own word back. */
+    public function test_clearing_a_name_returns_the_one_it_was_written_with(): void
+    {
+        $alice = $this->alice();
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded(), null, 'From a venue');
+
+        $this->avatars()->rename($avatar, 'Weekday');
+        $this->avatars()->rename($avatar, '   ');
+
+        $this->assertNull($avatar->fresh()->alias);
+        $this->assertSame('From a venue', $avatar->fresh()->called());
+    }
+
+    /**
+     * Renaming does not rewrite the record, and that is the point.
+     *
+     * A new record would mean a new rkey and no `writtenBy`, because that is
+     * set by the endpoint receiving somebody else's claim -- so renaming an
+     * avatar built at a venue would quietly erase where it was built.
+     */
+    public function test_renaming_keeps_the_record_and_where_it_was_built(): void
+    {
+        $avatar = $this->builtByVenue('https://avatars.streetmesh.com/experiences/builder?from=bafk');
+        $rkey = $avatar->rkey;
+
+        $this->avatars()->rename($avatar, 'Weekday');
+
+        $fresh = $avatar->fresh();
+
+        $this->assertSame($rkey, $fresh->rkey);
+        $this->assertSame('https://avatars.streetmesh.com', $fresh->builtAt());
+        $this->assertCount(1, $this->avatars()->allFor((string) $fresh->did), 'no second avatar was made');
+    }
+
+    /**
+     * The screen offers it, and shows the chosen name rather than the written one.
+     *
+     * Rendered rather than reasoned about: the control is a Flux button inside a
+     * Flux modal trigger, and whether an attribute reaches the element it looks
+     * like it is on is a question this project has been wrong about before.
+     */
+    public function test_the_wardrobe_offers_a_rename_and_shows_what_it_is_called(): void
+    {
+        $alice = $this->alice();
+        $avatar = $this->avatars()->adopt($alice, $this->uploaded(), null, 'From a venue');
+        $this->avatars()->rename($avatar, 'Weekday');
+
+        $this->actingAs(Resident::where('email', 'alice@home.test')->firstOrFail());
+
+        Livewire::test('domicile::avatar')
+            ->assertSee('Weekday')
+            ->assertDontSee('From a venue')
+            ->assertSeeHtml('wire:click="beginRename('.$avatar->id.')"')
+            ->assertSeeHtml('data-modal="rename-avatar"')
+            ->assertSeeHtml('wire:model="renamed"');
+    }
+
+    /**
+     * The id is in the markup and the markup is somebody's browser.
+     *
+     * So the screen scopes by DID on the way in and again on the way out, and a
+     * guessed number reaches nothing. Worth a test of its own: the rename box is
+     * the third thing on this screen to take an id from a click.
+     */
+    public function test_one_resident_cannot_rename_anothers_avatar(): void
+    {
+        $alice = $this->alice();
+        $hers = $this->avatars()->adopt($alice, $this->uploaded(), null, 'Hers');
+
+        $bob = Resident::create(['name' => 'Bob', 'email' => 'bob@home.test', 'password' => 'irrelevant']);
+        $this->app->make(Residents::class)->settle($bob, Handle::for('bob', 'home.test'));
+
+        $this->actingAs($bob);
+
+        Livewire::test('domicile::avatar')
+            ->call('beginRename', $hers->id)
+            ->set('renamed', 'Mine now')
+            ->call('rename');
+
+        $this->assertSame('Hers', $hers->fresh()->called());
+        $this->assertNull($hers->fresh()->alias);
     }
 
     private function builtByVenue(string $editableAt): Avatar

@@ -129,6 +129,32 @@ final readonly class Avatars
     }
 
     /**
+     * Call one of them something else.
+     *
+     * The projection only, like discarding and like wearing. The record keeps
+     * the name it was written with, and goes on being the thing this row is
+     * rebuilt from -- which is why the new name lives beside that rather than
+     * on top of it.
+     *
+     * Writing the record again was the alternative and is worse than it looks:
+     * records are written once, so a new name means a new one, and a new one
+     * has no `writtenBy` because that is set by the endpoint receiving somebody
+     * else's claim. Renaming an avatar built at a venue would erase where it
+     * was built.
+     *
+     * An empty name is not an error but an undoing: it puts the record's own
+     * word back.
+     */
+    public function rename(Avatar $avatar, string $alias): Avatar
+    {
+        $alias = trim($alias);
+
+        $avatar->forceFill(['alias' => $alias === '' ? null : $alias])->save();
+
+        return $avatar;
+    }
+
+    /**
      * Every avatar somebody is keeping, newest first.
      *
      * The projections rather than the records, because this answers "which of
