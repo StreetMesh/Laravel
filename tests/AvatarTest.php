@@ -530,6 +530,13 @@ class AvatarTest extends TestCase
         $screen->assertSet('deleting', $avatar->id);
         $this->assertCount(1, $this->avatars()->allFor((string) $alice->did), 'still there after one press');
 
+        /*
+         * The same quiet button with a red icon, not a filled red block. A
+         * different kind of control appearing in a row of bare icons is louder
+         * than this moment deserves, and it moves everything beside it.
+         */
+        $screen->assertSeeHtml('text-red-600');
+
         $screen->call('discard', $avatar->id)->assertSet('deleting', null);
 
         $this->assertCount(0, $this->avatars()->allFor((string) $alice->did), 'gone after the second');
