@@ -403,11 +403,17 @@ class extends Component
                                         Soft. The record and the picture it names both
                                         stand; what is removed is this list.
 
-                                        Asked twice, and the button is the question: the
-                                        first press takes the lid off and the second
-                                        empties it. A browser confirm dialog asks the
-                                        same thing from somewhere else on the screen,
-                                        in a voice that is not this page's.
+                                        Asked twice, and the icon is the question: the
+                                        first press takes the lid off and turns it red,
+                                        the second empties it. A browser confirm dialog
+                                        asks the same thing from somewhere else on the
+                                        screen, in a voice that is not this page's.
+
+                                        The same quiet button throughout, only its icon
+                                        changing. A filled red block in a row of bare
+                                        icons is a different kind of control appearing
+                                        where there was none, which is louder than the
+                                        moment deserves and moves everything beside it.
 
                                         Heroicons has no open bin, so this one is drawn
                                         here -- the same body, with the lid tipped off.
@@ -420,12 +426,17 @@ class extends Component
                                         >
                                             <flux:button
                                                 size="sm"
-                                                variant="danger"
+                                                variant="subtle"
                                                 square
                                                 wire:click="discard({{ $kept->id }})"
                                                 :title="__('Press again to delete')"
                                             >
-                                                <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <svg
+                                                    class="size-4 text-red-600 dark:text-red-400"
+                                                    viewBox="0 0 20 20"
+                                                    fill="currentColor"
+                                                    aria-hidden="true"
+                                                >
                                                     <g transform="rotate(-18 10 5.4)">
                                                         <rect x="3.6" y="4.35" width="12.8" height="2.1" rx="1.05" />
                                                         <rect x="8.1" y="2.1" width="3.8" height="1.7" rx=".85" />
